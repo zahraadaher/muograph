@@ -70,7 +70,7 @@ class POCA(AbsSave, VoxelPlotting):
             raise ValueError("Provide either poca.hdf5 file of TrackingMST instance.")
 
         # Compute poca attributes if TrackingMST is provided
-        elif tracking is not None:
+        elif (tracking is not None) and (voi is not None):
             self.tracks = deepcopy(tracking)
             self.voi = voi
 
@@ -78,16 +78,14 @@ class POCA(AbsSave, VoxelPlotting):
             self.tracks._filter_muons(self.parallel_mask)
 
             # Remove POCAs outside voi
-            if voi is not None:
-                self.tracks._filter_muons(self.mask_in_voi)
-                self._filter_pocas(self.mask_in_voi)
+
+            self.tracks._filter_muons(self.mask_in_voi)
+            self._filter_pocas(self.mask_in_voi)
 
             # Save attributes to hdf5
             if output_dir is not None:
-                if voi is None:
-                    self.save_attr(["poca_points"], self.output_dir, filename="poca")
-                else:
-                    self.save_attr(self._vars_to_save, self.output_dir, filename="poca")
+                print("Yup")
+                self.save_attr(self._vars_to_save, self.output_dir, filename="poca")
 
         # Load poca attributes from hdf5 if poca_file is provided
         elif tracking is None and poca_file is not None:
