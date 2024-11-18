@@ -3,15 +3,20 @@ from tracking.tracking import Tracking, TrackingMST
 from reconstruction.poca import POCA
 from volume.volume import Volume
 import os
+from pathlib import Path
+from utils.save import muograph_path
+import torch
+import numpy as np
 
 # Test data file path
-test_hit_file = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
+TEST_HIT_FILE = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
+VOI = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
 
 
 def get_mst(hits_file: str) -> TrackingMST:
     hits_in = Hits(
         plane_labels=(0, 1, 2),
-        csv_filename=test_hit_file,
+        csv_filename=hits_file,
         spatial_res=[1.0, 1.0, 0.0],
         energy_range=[0.0, 1_000_000],
         efficiency=0.98,
@@ -20,7 +25,7 @@ def get_mst(hits_file: str) -> TrackingMST:
 
     hits_out = Hits(
         plane_labels=(3, 4, 5),
-        csv_filename=test_hit_file,
+        csv_filename=hits_file,
         spatial_res=[1.0, 1.0, 0.0],
         energy_range=[0.0, 1_000_000],
         efficiency=0.98,
@@ -33,12 +38,49 @@ def get_mst(hits_file: str) -> TrackingMST:
     return TrackingMST(trackings=(tracks_in, tracks_out))
 
 
+def test_poca_loading() -> None:
+    mst = get_mst(TEST_HIT_FILE)
+
+    output_dir = str(Path(muograph_path) / "../test_output/")
+
+    poca = POCA(tracking=mst, voi=VOI, output_dir=output_dir)
+
+    def compare_attr(attr: str, ref_instance: Tracking, loaded_instance: Tracking) -> bool:
+        r"""
+        Compares a specific attribute between a reference and a loaded Tracking instance.
+
+        Args:
+            attr (str): The attribute to compare.
+            ref_instance (Tracking): The reference Tracking instance.
+            loaded_instance (Tracking): The loaded Tracking instance.
+
+        Returns:
+            bool: True if the attributes match, False otherwise.
+        """
+        ref_value = getattr(ref_instance, attr)
+        loaded_value = getattr(loaded_instance, attr)
+
+        if isinstance(ref_value, torch.Tensor):
+            # Ensure both tensors have the same dtype before comparison. TO BE CHANGED.
+            if ref_value.dtype != loaded_value.dtype:
+                loaded_value = loaded_value.to(ref_value.dtype)
+            return torch.allclose(ref_value, loaded_value)
+        elif isinstance(ref_value, (bool, np.bool_)):
+            return ref_value == loaded_value
+        else:
+            return np.array_equal(ref_value, loaded_value)
+
+    poca_loaded = POCA(poca_file=output_dir + "/poca.hdf5")
+
+    comparison_results = [compare_attr(attr, poca, poca_loaded) for attr in POCA._vars_to_load]
+
+    assert all(comparison_results), "Mismatch between reference and loaded POCA instances."
+
+
 def test_poca_predictions() -> None:
-    mst = get_mst(test_hit_file)
+    mst = get_mst(TEST_HIT_FILE)
 
-    voi = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
-
-    poca = POCA(mst, voi=voi)
+    poca = POCA(mst, voi=VOI)
 
     n_poca_uranium_x_region = poca.n_poca_per_vox[23:28].float().mean()
     n_poca_empty_x_region = poca.n_poca_per_vox[-5:].float().mean()
