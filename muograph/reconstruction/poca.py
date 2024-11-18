@@ -84,7 +84,6 @@ class POCA(AbsSave, VoxelPlotting):
 
             # Save attributes to hdf5
             if output_dir is not None:
-                print("Yup")
                 self.save_attr(self._vars_to_save, self.output_dir, filename="poca")
 
         # Load poca attributes from hdf5 if poca_file is provided
