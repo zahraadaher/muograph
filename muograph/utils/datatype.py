@@ -6,4 +6,4 @@ dtype_track = torch.float32
 
 dtype_n = torch.int32
 
-dtype_E = torch.float64
+dtype_E = torch.float32
