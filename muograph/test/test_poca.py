@@ -3,21 +3,18 @@ from tracking.tracking import Tracking, TrackingMST
 from reconstruction.poca import POCA
 from volume.volume import Volume
 
-import pytest
-from pathlib import Path
 import os
 
 # Test data file path
-root = os.getcwd()
-test_hit_file = Path(root + "/../data/iron_barrel/barrel_and_cubes_scattering.csv").as_posix()
+test_hit_file = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
+
 
 def test_poca() -> None:
-
     hits_in = Hits(
         plane_labels=(0, 1, 2),
         csv_filename=test_hit_file,
-        spatial_res=[1., 1., 0.],
-        energy_range=[0., 1_000_000],
+        spatial_res=[1.0, 1.0, 0.0],
+        energy_range=[0.0, 1_000_000],
         efficiency=0.98,
         input_unit="mm",
     )
@@ -25,8 +22,8 @@ def test_poca() -> None:
     hits_out = Hits(
         plane_labels=(3, 4, 5),
         csv_filename=test_hit_file,
-        spatial_res=[1., 1., 0.],
-        energy_range=[0., 1_000_000],
+        spatial_res=[1.0, 1.0, 0.0],
+        energy_range=[0.0, 1_000_000],
         efficiency=0.98,
         input_unit="mm",
     )
@@ -36,15 +33,13 @@ def test_poca() -> None:
 
     mst = TrackingMST(trackings=(tracks_in, tracks_out))
 
-    voi = Volume(
-        position = [0, 0,-1200],
-        dimension=[1000,600,600],
-        voxel_width=20
-        )
+    voi = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
 
     poca = POCA(mst, voi=voi)
 
     n_poca_uranium_x_region = poca.n_poca_per_vox[23:28].float().mean()
     n_poca_empty_x_region = poca.n_poca_per_vox[-5:].float().mean()
 
-    assert n_poca_uranium_x_region > n_poca_empty_x_region, "The average number of POCA points per voxel in the uranium x region {n_poca_uranium_x_region} must be higher than in the empty region {n_poca_empty_x_region}"
+    assert (
+        n_poca_uranium_x_region > n_poca_empty_x_region
+    ), "The average number of POCA points per voxel in the uranium x region {n_poca_uranium_x_region} must be higher than in the empty region {n_poca_empty_x_region}"
