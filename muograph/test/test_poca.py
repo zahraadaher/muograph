@@ -2,14 +2,13 @@ from hits.hits import Hits
 from tracking.tracking import Tracking, TrackingMST
 from reconstruction.poca import POCA
 from volume.volume import Volume
-
 import os
 
 # Test data file path
 test_hit_file = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
 
 
-def test_poca() -> None:
+def get_mst(hits_file: str) -> TrackingMST:
     hits_in = Hits(
         plane_labels=(0, 1, 2),
         csv_filename=test_hit_file,
@@ -31,7 +30,11 @@ def test_poca() -> None:
     tracks_in = Tracking(label="above", hits=hits_in)
     tracks_out = Tracking(label="below", hits=hits_out)
 
-    mst = TrackingMST(trackings=(tracks_in, tracks_out))
+    return TrackingMST(trackings=(tracks_in, tracks_out))
+
+
+def test_poca_predictions() -> None:
+    mst = get_mst(test_hit_file)
 
     voi = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
 
