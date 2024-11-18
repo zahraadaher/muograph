@@ -49,7 +49,6 @@ class POCA(AbsSave, VoxelPlotting):
         voi: Optional[Volume] = None,
         poca_file: Optional[str] = None,
         output_dir: Optional[str] = None,
-        save: bool = False,
     ) -> None:
         r"""
         Initializes the POCA object with either an instance of the TrackingMST class or a
@@ -64,7 +63,7 @@ class POCA(AbsSave, VoxelPlotting):
             - output_dir (Optional[str]): Path to a directory where to save POCA attributes
             in a hdf5 file.
         """
-        AbsSave.__init__(self, output_dir=output_dir, save=save)
+        AbsSave.__init__(self, output_dir=output_dir)
         VoxelPlotting.__init__(self, voi)
 
         if tracking is None and poca_file is None:
@@ -84,7 +83,7 @@ class POCA(AbsSave, VoxelPlotting):
                 self._filter_pocas(self.mask_in_voi)
 
             # Save attributes to hdf5
-            if save:
+            if output_dir is not None:
                 if voi is None:
                     self.save_attr(["poca_points"], self.output_dir, filename="poca")
                 else:
