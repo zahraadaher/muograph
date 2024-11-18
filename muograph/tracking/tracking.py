@@ -17,14 +17,14 @@ class Tracking(AbsSave):
     The muon hits on detector planes are plugged into a linear fit
     to compute a track T(tx, ty, tz) and a point on that track P(px, py, pz).
 
-    From T(tx, ty, tz), one computes the muons' zenith angles, defined as the
+    From T(tx, ty, tz), one computes the muons' zenith angles labeled theta, and defined as the
     angle between the vertical axis z and the muon track. A vertical muon has
     a 0 [rad] zenith angle.
 
     The projections of the zenith angle in the XZ and YZ planes,
     theta_x and theta_y respectively, are also computed.
 
-    If the detector spatial resolution was simulated, the tracking angular resolution is compted as
+    If the detector spatial resolution is simulated, the tracking angular resolution is compted as
     the standard deviation of the distribution of the error on theta. The error on theta,
     is computed by comparing the values of theta computed from the generated hits (Hits.gen_hits) and
     from the smeared hits (Hits.reco_hits).
@@ -55,7 +55,6 @@ class Tracking(AbsSave):
         output_dir: Optional[str] = None,
         tracks_hdf5: Optional[str] = None,
         measurement_type: Optional[str] = None,
-        save: bool = False,
         compute_angular_res: bool = False,
     ) -> None:
         r"""
@@ -81,16 +80,17 @@ class Tracking(AbsSave):
         self._measurement_type = self._validate_measurement_type(measurement_type)
         self._compute_angular_res = compute_angular_res
 
-        super().__init__(output_dir=output_dir, save=save)
+        super().__init__(output_dir=output_dir)
 
         if (hits is not None) & (tracks_hdf5 is None):
             self.hits = hits
 
-            if save:
+            if self.output_dir is not None:
+                filename = "tracks_" + self.label if self._measurement_type == "" else "tracks_" + self.label + "_" + self._measurement_type
                 self.save_attr(
                     attributes=self._vars_to_save,
                     directory=self.output_dir,
-                    filename="tracks_" + self.label + "_" + self._measurement_type,
+                    filename=filename,
                 )
         elif tracks_hdf5 is not None:
             self.load_attr(attributes=self._vars_to_save, filename=tracks_hdf5)
@@ -105,15 +105,11 @@ class Tracking(AbsSave):
     def _validate_measurement_type(measurement_type: Optional[str]) -> str:
         valid_types = ["absorption", "freesky", None]
         if measurement_type not in valid_types:
-            raise ValueError(
-                "Measurement type must be 'absorption', 'freesky', or None."
-            )
+            raise ValueError("Measurement type must be 'absorption', 'freesky', or None.")
         return measurement_type or ""
 
     @staticmethod
-    def get_tracks_points_from_hits(
-        hits: Tensor, chunk_size: int = 200_000
-    ) -> Tuple[Tensor, Tensor]:
+    def get_tracks_points_from_hits(hits: Tensor, chunk_size: int = 200_000) -> Tuple[Tensor, Tensor]:
         r"""
         The muon hits on detector planes are plugged into a linear fit
         to compute a track T(tx, ty, tz) and a point on that track P(px, py, pz).
@@ -142,17 +138,11 @@ class Tracking(AbsSave):
             points_chunk = hits_chunk.mean(dim=1)  # Shape: (3, chunk_size)
 
             # Center the data
-            centered_hits_chunk = hits_chunk - points_chunk.unsqueeze(
-                1
-            )  # Shape: (3, n_plane, chunk_size)
+            centered_hits_chunk = hits_chunk - points_chunk.unsqueeze(1)  # Shape: (3, n_plane, chunk_size)
 
             # Perform SVD in batch mode
-            centered_hits_chunk = centered_hits_chunk.permute(
-                2, 1, 0
-            )  # Shape: (chunk_size, n_plane, 3)
-            _, _, vh = torch.linalg.svd(
-                centered_hits_chunk, full_matrices=False
-            )  # vh shape: (chunk_size, 3, 3)
+            centered_hits_chunk = centered_hits_chunk.permute(2, 1, 0)  # Shape: (chunk_size, n_plane, 3)
+            _, _, vh = torch.linalg.svd(centered_hits_chunk, full_matrices=False)  # vh shape: (chunk_size, 3, 3)
 
             # Extract the principal direction (first right singular vector) for each set
             tracks_chunk = vh[:, 0, :]  # Shape: (chunk_size, 3)
@@ -194,9 +184,7 @@ class Tracking(AbsSave):
         Returns:
             theta_xy (Tensor): Muons' zenith angle in XZ and YZ planes.
         """
-        theta_xy = torch.empty(
-            (2, tracks.size(0)), dtype=tracks.dtype, device=tracks.device
-        )
+        theta_xy = torch.empty((2, tracks.size(0)), dtype=tracks.dtype, device=tracks.device)
 
         theta_xy[0] = torch.atan(tracks[:, 0] / tracks[:, 2])
         theta_xy[1] = torch.atan(tracks[:, 1] / tracks[:, 2])
@@ -261,9 +249,7 @@ class Tracking(AbsSave):
         )
 
         # Zenith angle
-        axs[0].hist(
-            self.theta.detach().cpu().numpy() * 180 / math.pi, bins=n_bins, alpha=alpha
-        )
+        axs[0].hist(self.theta.detach().cpu().numpy() * 180 / math.pi, bins=n_bins, alpha=alpha)
         axs[0].axvline(
             x=self.theta.mean().detach().cpu().numpy() * 180 / math.pi,
             label=f"mean = {self.theta.mean().detach().cpu().numpy() * 180 / math.pi:.1f}",
@@ -392,9 +378,7 @@ class Tracking(AbsSave):
         The muons' direction
         """
         if self._tracks is None:
-            self._tracks, self._points = self.get_tracks_points_from_hits(
-                hits=self.hits.reco_hits  # type: ignore
-            )
+            self._tracks, self._points = self.get_tracks_points_from_hits(hits=self.hits.reco_hits)  # type: ignore
         return self._tracks
 
     @tracks.setter
@@ -407,9 +391,7 @@ class Tracking(AbsSave):
         Point on muons' trajectory.
         """
         if self._points is None:
-            self._tracks, self._points = self.get_tracks_points_from_hits(
-                hits=self.hits.reco_hits  # type: ignore
-            )
+            self._tracks, self._points = self.get_tracks_points_from_hits(hits=self.hits.reco_hits)  # type: ignore
         return self._points
 
     @points.setter
@@ -531,7 +513,6 @@ class TrackingMST(AbsSave):
         tracking_files: Optional[Tuple[str, str]] = None,
         trackings: Optional[Tuple[Tracking, Tracking]] = None,
         output_dir: Optional[str] = None,
-        save: bool = False,
     ) -> None:
         r"""
         Initializes the TrackingMST object with either 2 instances of the Tracking class
@@ -543,15 +524,14 @@ class TrackingMST(AbsSave):
             - trackings (Optional[Tuple[Tracking, Tracking]]): instances of the Tracking class
             for the incoming muon tracks (Tracking.label = 'above') and outgoing tracks
             (Tracking.label = 'below')
-            -  output_dir (Optional[str]): Path to a directory where to save TrackingMST attributes
-            in a hdf5 file. (Not Implemented Yet).
+            - output_dir (Optional[str]): Path to a directory where to save TrackingMST attributes
+            in a hdf5 file.
+            - save (bool): If True,
         """
-        super().__init__(output_dir=output_dir, save=save)
+        super().__init__(output_dir=output_dir)
 
         if tracking_files is None and trackings is None:
-            raise ValueError(
-                "Provide either a list of tracking files or a list of Tracking instances."
-            )
+            raise ValueError("Provide either a list of tracking files or a list of Tracking instances.")
 
         # Load data from tracking hdf5 files
         elif trackings is None and tracking_files is not None:
@@ -585,9 +565,7 @@ class TrackingMST(AbsSave):
             setattr(self, attr, data)
 
     @staticmethod
-    def compute_dtheta_from_tracks(
-        tracks_in: Tensor, tracks_out: Tensor, tol: float = 1.0e-12
-    ) -> Tensor:
+    def compute_dtheta_from_tracks(tracks_in: Tensor, tracks_out: Tensor, tol: float = 1.0e-12) -> Tensor:
         r"""
         Computes the scattering angle between the incoming and outgoing muon tracks.
 
@@ -605,9 +583,7 @@ class TrackingMST(AbsSave):
         def norm(x: Tensor) -> Tensor:
             return torch.sqrt((x**2).sum(dim=-1))
 
-        dot_prod = torch.abs(tracks_in * tracks_out).sum(dim=-1) / (
-            norm(tracks_in) * norm(tracks_out)
-        )
+        dot_prod = torch.abs(tracks_in * tracks_out).sum(dim=-1) / (norm(tracks_in) * norm(tracks_out))
         dot_prod = torch.clamp(dot_prod, -1.0 + tol, 1.0 - tol)
         dtheta = torch.acos(dot_prod)
         return dtheta
@@ -680,15 +656,11 @@ class TrackingMST(AbsSave):
         # Set default font
         matplotlib.rc("font", **font)
 
-        fig, axs = plt.subplots(
-            ncols=2, nrows=2, figsize=(2 * hist_figsize[0], 2 * hist_figsize[1])
-        )
+        fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(2 * hist_figsize[0], 2 * hist_figsize[1]))
         axs = axs.ravel()
 
         # Fig title
-        fig.suptitle(
-            f"Batch of {self.n_mu} muons", fontsize=titlesize, fontweight="bold"
-        )
+        fig.suptitle(f"Batch of {self.n_mu} muons", fontsize=titlesize, fontweight="bold")
 
         # Zenith angle
         axs[0].hist(
@@ -765,9 +737,7 @@ class TrackingMST(AbsSave):
     def dtheta(self) -> Tensor:
         r"""Muon scattering angle measured between the incoming and outgoing tracks"""
         if self._dtheta is None:
-            self._dtheta = self.compute_dtheta_from_tracks(
-                self.tracks_in, self.tracks_out
-            )
+            self._dtheta = self.compute_dtheta_from_tracks(self.tracks_in, self.tracks_out)
         return self._dtheta
 
     # Tracks
