@@ -1,14 +1,12 @@
 from pathlib import Path
 from typing import List, Optional
 from torch import Tensor
+from utils.device import DEVICE
 import numpy as np
 import h5py
 import os
 
-muograph_path = (
-    str(Path(__file__).parent.parent.parent).split("/muograph/")[0]
-    + "/muograph/"
-)
+muograph_path = str(Path(__file__).parent.parent.parent).split("/muograph/")[0] + "/muograph/"
 default_output_dir: str = muograph_path + "/output/"
 
 
@@ -18,20 +16,16 @@ class AbsSave:
     saving/loading.
     """
 
-    def __init__(self, output_dir: Optional[str] = None, save: bool = True) -> None:
+    def __init__(self, output_dir: Optional[str] = None) -> None:
         """
         Initializes the AbsSave object and ensures the output directory exists.
 
         Args:
             output_dir (str): The path to the directory where output files will be saved.
-            save (bool): If True, the output_dir gets created.
         """
-        if output_dir is None:
-            output_dir = default_output_dir
 
-        self.output_dir = Path(output_dir)
-
-        if save:
+        if output_dir is not None:
+            self.output_dir = Path(output_dir)
             try:
                 self.create_directory(self.output_dir)
             except FileNotFoundError:
@@ -41,6 +35,8 @@ class AbsSave:
             except OSError as e:
                 # General fallback for other OS-related errors.
                 print(f"OS error occurred while creating {self.output_dir}: {e}")
+        else:
+            self.output_dir = None  # type: ignore
 
     @staticmethod
     def create_directory(directory: Path) -> None:
@@ -87,9 +83,7 @@ class AbsSave:
         f.close()
         print("Class attributes saved at {}".format(directory / filename))
 
-    def load_attr(
-        self, attributes: List[str], filename: str, tag: Optional[str] = None
-    ) -> None:
+    def load_attr(self, attributes: List[str], filename: str, tag: Optional[str] = None) -> None:
         r"""
         Loads class attributes from hdf5 file.
 
@@ -106,14 +100,15 @@ class AbsSave:
             for attr in attributes:
                 data = f[attr]
                 if tag is not None:
-                    if (
-                        attr != "E"
-                    ):  # Do not differenciate incoming energy from outgoing energy
+                    if attr != "E":  # Do not differenciate incoming energy from outgoing energy
                         attr += tag
                 if data.ndim == 0:
-                    setattr(self, attr, data[()])
+                    if isinstance(data[()], bytes):
+                        setattr(self, attr, data[()].decode("utf-8"))
+                    else:
+                        setattr(self, attr, data[()])
                 elif type(data[:]) is np.ndarray:
-                    setattr(self, attr, Tensor(data[:]))
+                    setattr(self, attr, Tensor(data[:], device=DEVICE))
                 elif isinstance(data[()], bytes):  # Strings are usually stored as bytes
                     setattr(self, attr, data[()].decode("utf-8"))
 
