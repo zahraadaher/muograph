@@ -87,9 +87,7 @@ class VoxelPlotting:
         return scale * ncols * adj_xy_ratio[0], scale * nrows * adj_xy_ratio[1]
 
     @staticmethod
-    def get_2D_slice_from_3D(
-        dim: int, xyz_voxel_preds: Tensor, voi_slice: Union[int, Tuple[int, int]]
-    ) -> Tensor:
+    def get_2D_slice_from_3D(dim: int, xyz_voxel_preds: Tensor, voi_slice: Union[int, Tuple[int, int]]) -> Tensor:
         r"""
         Get a 2D from a 3D array.
 
@@ -110,9 +108,7 @@ class VoxelPlotting:
         """
 
         if xyz_voxel_preds.dtype not in [torch.float16, torch.float32, torch.float64]:
-            xyz_voxel_preds = (
-                torch.ones_like(xyz_voxel_preds, dtype=torch.float32) * xyz_voxel_preds
-            )
+            xyz_voxel_preds = torch.ones_like(xyz_voxel_preds, dtype=torch.float32) * xyz_voxel_preds
 
         if isinstance(voi_slice, int):  # type: ignore
             if dim == 2:
@@ -132,9 +128,7 @@ class VoxelPlotting:
                 return xyz_voxel_preds[start : end + 1, :, :].mean(dim=0)
 
     @staticmethod
-    def get_voi_slice(
-        dim: int, voi: Volume, voi_slice: Union[int, Tuple[int, int]]
-    ) -> Tuple[float, float]:
+    def get_voi_slice(dim: int, voi: Volume, voi_slice: Union[int, Tuple[int, int]]) -> Tuple[float, float]:
         """
         Get the range of positions in the slice along the desired dimension.
 
@@ -259,9 +253,7 @@ class VoxelPlotting:
             xy_data_uncs = torch.zeros_like(xy_data)
 
         # Get the range of the slice position along the reduced dimnsion
-        voi_slice_coord = VoxelPlotting.get_voi_slice(
-            dim=dim, voi=voi, voi_slice=voi_slice
-        )
+        voi_slice_coord = VoxelPlotting.get_voi_slice(dim=dim, voi=voi, voi_slice=voi_slice)
 
         # Get xy dimensions
         dim_mapping = {
@@ -276,30 +268,12 @@ class VoxelPlotting:
                     voi.xyz_min[1].detach().cpu().numpy(),
                     voi.xyz_max[1].detach().cpu().numpy(),
                 ),  # The left, right, bottom, top extent of the 2D slice.
-                "x_data": xy_data.mean(dim=1)
-                .detach()
-                .cpu()
-                .numpy(),  # The 2D slice predictions averaged along the x axis (on the plot)
-                "y_data": xy_data.mean(dim=0)
-                .detach()
-                .cpu()
-                .numpy(),  # The 2D slice predictions averaged along the y axis (on the plot)
-                "x_data_uncs": xy_data_uncs.mean(dim=1)
-                .detach()
-                .cpu()
-                .numpy(),  # Same for uncs
-                "y_data_uncs": xy_data_uncs.mean(dim=0)
-                .detach()
-                .cpu()
-                .numpy(),  # Same for uncs
-                "x_vox_pos": voi.voxel_centers[:, 0, 0, 0]
-                .detach()
-                .cpu()
-                .numpy(),  # Voxels position along the x axis (on the plot)
-                "y_vox_pos": voi.voxel_centers[0, :, 0, 1]
-                .detach()
-                .cpu()
-                .numpy(),  # Voxels position along the y axis (on the plot)
+                "x_data": xy_data.mean(dim=1).detach().cpu().numpy(),  # The 2D slice predictions averaged along the x axis (on the plot)
+                "y_data": xy_data.mean(dim=0).detach().cpu().numpy(),  # The 2D slice predictions averaged along the y axis (on the plot)
+                "x_data_uncs": xy_data_uncs.mean(dim=1).detach().cpu().numpy(),  # Same for uncs
+                "y_data_uncs": xy_data_uncs.mean(dim=0).detach().cpu().numpy(),  # Same for uncs
+                "x_vox_pos": voi.voxel_centers[:, 0, 0, 0].detach().cpu().numpy(),  # Voxels position along the x axis (on the plot)
+                "y_vox_pos": voi.voxel_centers[0, :, 0, 1].detach().cpu().numpy(),  # Voxels position along the y axis (on the plot)
                 "plane": "XY",
             },
             1: {
@@ -343,28 +317,16 @@ class VoxelPlotting:
         }
 
         # Compute the figure size based on the plot xy ratio
-        figsize = VoxelPlotting.get_fig_size(
-            voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale
-        )
+        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)
 
         # Compute figure size based on the main axis size
-        figsize = VoxelPlotting.get_fig_size(
-            voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale
-        )
+        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)
         # Create the main figure
         fig, ax = plt.subplots(figsize=figsize)
 
         # Set 2D map contrast
-        vmin = (
-            xy_data.ravel().min().detach().cpu().item()
-            if v_min_max is None
-            else v_min_max[0]
-        )
-        vmax = (
-            xy_data.ravel().max().detach().cpu().item()
-            if v_min_max is None
-            else v_min_max[1]
-        )
+        vmin = xy_data.ravel().min().detach().cpu().item() if v_min_max is None else v_min_max[0]
+        vmax = xy_data.ravel().max().detach().cpu().item() if v_min_max is None else v_min_max[1]
 
         # Plot the 2D slice predictions
         im = ax.imshow(
@@ -377,12 +339,8 @@ class VoxelPlotting:
         )
 
         # Set axis labels
-        ax.set_xlabel(
-            f"Voxel ${dim_mapping[dim]['x_label']}$ location [mm]", fontweight="bold"
-        )
-        ax.set_ylabel(
-            f"Voxel ${dim_mapping[dim]['y_label']}$ location [mm]", fontweight="bold"
-        )
+        ax.set_xlabel(f"Voxel ${dim_mapping[dim]['x_label']}$ location [mm]", fontweight="bold")
+        ax.set_ylabel(f"Voxel ${dim_mapping[dim]['y_label']}$ location [mm]", fontweight="bold")
         ax.tick_params(axis="both", labelsize=labelsize)
 
         divider = make_axes_locatable(ax)
@@ -400,9 +358,7 @@ class VoxelPlotting:
 
         # Set figure title
         ax_histx.set_title(
-            f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} "
-            + r"$\in$"
-            + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
+            f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} " + r"$\in$" + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
             fontweight="bold",
             fontsize=titlesize,
             y=1.05,
@@ -466,17 +422,11 @@ class VoxelPlotting:
         # Add colorbar
         cbar_ax = fig.add_axes([0.95, 0.1, 0.03, 0.6])  # [left, bottom, width, height]
         cbar = fig.colorbar(im, cax=cbar_ax)  # Attach colorbar to the custom axis
-        cbar.set_label(
-            pred_label + " " + pred_unit, fontweight="bold"
-        )  # Colorbar label
+        cbar.set_label(pred_label + " " + pred_unit, fontweight="bold")  # Colorbar label
 
         # Set axis labels
-        ax_histx.set_ylabel(
-            pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold"
-        )
-        ax_histy.set_xlabel(
-            pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold"
-        )
+        ax_histx.set_ylabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
+        ax_histy.set_xlabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
 
         # Save plot
         if filename is not None:
@@ -517,9 +467,7 @@ class VoxelPlotting:
 
         # If multiple slices per plot, adjust nplots accordingly
         if nslice_per_plot > 1:
-            assert (
-                nplots % nslice_per_plot == 0
-            ), f"Make sure that the number of plots ({nplots}) can be divided by nslice_per_plot ({nslice_per_plot})"
+            assert nplots % nslice_per_plot == 0, f"Make sure that the number of plots ({nplots}) can be divided by nslice_per_plot ({nslice_per_plot})"
             nplots //= nslice_per_plot
 
         # Compute the number of columns and blank plots in the figure
@@ -534,14 +482,10 @@ class VoxelPlotting:
             dims = (1, 2)
 
         # Compute the figure size
-        figsize = VoxelPlotting.get_fig_size(
-            voi=voi, dims=dims, ncols=ncols, nrows=nrows, scale=scale
-        )
+        figsize = VoxelPlotting.get_fig_size(voi=voi, dims=dims, ncols=ncols, nrows=nrows, scale=scale)
 
         # Get figure and axis
-        fig, axs = plt.subplots(
-            ncols=ncols, nrows=nrows, figsize=figsize, sharex=True, sharey=True
-        )
+        fig, axs = plt.subplots(ncols=ncols, nrows=nrows, figsize=figsize, sharex=True, sharey=True)
 
         axs = axs.ravel()
 
@@ -550,10 +494,8 @@ class VoxelPlotting:
         else:
             # Define the dimension-specific slicing based on dim
             slice_fn = {
-                2: lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2)
-                / nslice_per_plot,
-                1: lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1)
-                / nslice_per_plot,
+                2: lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2) / nslice_per_plot,
+                1: lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1) / nslice_per_plot,
                 0: lambda p, s: p[s : s + nslice_per_plot].sum(dim=0) / nslice_per_plot,
             }[dim]
 
@@ -577,12 +519,9 @@ class VoxelPlotting:
         # Mapping for dimension-specific attributes
         dim_mapping = {
             2: {
-                "slice_fn": lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2)
-                / nslice_per_plot,
+                "slice_fn": lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2) / nslice_per_plot,
                 "z_min_fn": lambda v, s: v.voxel_edges[0, 0, s, 0, 2],
-                "z_max_fn": lambda v, s: v.voxel_edges[
-                    0, 0, s + nslice_per_plot - 1, 1, 2
-                ],
+                "z_max_fn": lambda v, s: v.voxel_edges[0, 0, s + nslice_per_plot - 1, 1, 2],
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 0],
                     voi.voxel_edges[-1, 0, 0, 1, 0],
@@ -597,12 +536,9 @@ class VoxelPlotting:
                 "plane": "XY",
             },
             1: {
-                "slice_fn": lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1)
-                / nslice_per_plot,
+                "slice_fn": lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1) / nslice_per_plot,
                 "z_min_fn": lambda v, s: v.voxel_edges[0, s, 0, 0, 1],
-                "z_max_fn": lambda v, s: v.voxel_edges[
-                    0, s + nslice_per_plot - 1, 0, 1, 1
-                ],
+                "z_max_fn": lambda v, s: v.voxel_edges[0, s + nslice_per_plot - 1, 0, 1, 1],
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 0],
                     voi.voxel_edges[-1, 0, 0, 1, 0],
@@ -617,12 +553,9 @@ class VoxelPlotting:
                 "plane": "XZ",
             },
             0: {
-                "slice_fn": lambda p, s: p[s : s + nslice_per_plot].sum(dim=0)
-                / nslice_per_plot,
+                "slice_fn": lambda p, s: p[s : s + nslice_per_plot].sum(dim=0) / nslice_per_plot,
                 "z_min_fn": lambda v, s: v.voxel_edges[s, 0, 0, 0, 0],
-                "z_max_fn": lambda v, s: v.voxel_edges[
-                    s + nslice_per_plot - 1, 0, 0, 1, 0
-                ],
+                "z_max_fn": lambda v, s: v.voxel_edges[s + nslice_per_plot - 1, 0, 0, 1, 0],
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 1],
                     voi.voxel_edges[0, -1, 0, 1, 1],
@@ -664,8 +597,7 @@ class VoxelPlotting:
                 vmin=vmin,
                 vmax=vmax,
                 cmap=cmap,
-                extent=dim_mapping[dim]["left_right_extent"]  # type: ignore
-                + dim_mapping[dim]["bottom_top_extent"],
+                extent=dim_mapping[dim]["left_right_extent"] + dim_mapping[dim]["bottom_top_extent"],  # type: ignore
             )
 
             axs[i].set_title(
@@ -691,9 +623,7 @@ class VoxelPlotting:
         # Add color bar
         cbar_ax = fig.add_axes([1.01, 0.15, 0.05, 0.7])
         cbar = fig.colorbar(im, cax=cbar_ax, label=colorbar_label)
-        cbar.set_label(
-            colorbar_label + " " + pred_unit, fontweight="bold"
-        )  # Colorbar label
+        cbar.set_label(colorbar_label + " " + pred_unit, fontweight="bold")  # Colorbar label
 
         plt.subplots_adjust(right=0.99)
 
@@ -814,13 +744,11 @@ class VoxelPlotting:
                 ),
                 "extent_x": (
                     (2 * voi.vox_width / (voi.dxyz[0] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[0])
-                    / (voi.dxyz[0] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[0]) / (voi.dxyz[0] + 4 * voi.vox_width),
                 ),
                 "extent_y": (
                     (2 * voi.vox_width / (voi.dxyz[1] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[1])
-                    / (voi.dxyz[1] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[1]) / (voi.dxyz[1] + 4 * voi.vox_width),
                 ),
             },
             1: {  # XZ plane
@@ -844,13 +772,11 @@ class VoxelPlotting:
                 ),
                 "extent_x": (
                     (2 * voi.vox_width / (voi.dxyz[0] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[0])
-                    / (voi.dxyz[0] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[0]) / (voi.dxyz[0] + 4 * voi.vox_width),
                 ),
                 "extent_y": (
                     (2 * voi.vox_width / (voi.dxyz[2] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[2])
-                    / (voi.dxyz[2] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[2]) / (voi.dxyz[2] + 4 * voi.vox_width),
                 ),
             },
             0: {  # YZ plane
@@ -874,13 +800,11 @@ class VoxelPlotting:
                 ),
                 "extent_x": (
                     (2 * voi.vox_width / (voi.dxyz[1] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[1])
-                    / (voi.dxyz[1] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[1]) / (voi.dxyz[1] + 4 * voi.vox_width),
                 ),
                 "extent_y": (
                     (2 * voi.vox_width / (voi.dxyz[2] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[2])
-                    / (voi.dxyz[2] + 4 * voi.vox_width),
+                    (2 * voi.vox_width + voi.dxyz[2]) / (voi.dxyz[2] + 4 * voi.vox_width),
                 ),
             },
         }
