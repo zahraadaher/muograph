@@ -76,9 +76,7 @@ class Hits:
 
         # Detector panel parameters
         self.spatial_res = (
-            torch.tensor(spatial_res, dtype=dtype_hit, device=DEVICE)
-            if spatial_res is not None
-            else torch.zeros(3, dtype=dtype_hit, device=DEVICE)
+            torch.tensor(spatial_res, dtype=dtype_hit, device=DEVICE) if spatial_res is not None else torch.zeros(3, dtype=dtype_hit, device=DEVICE)
         )
 
         self.efficiency = efficiency  # in %
@@ -110,17 +108,11 @@ class Hits:
             raise ValueError("Either csv_filename or df must be provided.")
 
         # Panels label
-        self.plane_labels = (
-            plane_labels
-            if plane_labels is not None
-            else self.get_panels_labels_from_df(self._df)
-        )
+        self.plane_labels = plane_labels if plane_labels is not None else self.get_panels_labels_from_df(self._df)
 
         # Filter events with E out of energy_range
         if self.energy_range is not None:
-            energy_mask = (self.E > self.energy_range[0]) & (
-                self.E < self.energy_range[-1]
-            )
+            energy_mask = (self.E > self.energy_range[0]) & (self.E < self.energy_range[-1])
             self._filter_events(energy_mask)
 
         # Detector efficiency
@@ -145,9 +137,7 @@ class Hits:
         return pd.read_csv(csv_filename)
 
     @staticmethod
-    def get_hits_from_df(
-        df: pd.DataFrame, plane_labels: Optional[Tuple[int, ...]] = None
-    ) -> Tensor:
+    def get_hits_from_df(df: pd.DataFrame, plane_labels: Optional[Tuple[int, ...]] = None) -> Tensor:
         r"""
         Extracts hits data from a DataFrame and returns it as a Tensor.
 
@@ -172,19 +162,11 @@ class Hits:
             z_col = f"Z{plane}"
 
             if x_col not in df or y_col not in df or z_col not in df:
-                raise KeyError(
-                    f"Missing columns for plane {plane}: {x_col}, {y_col}, {z_col}"
-                )
+                raise KeyError(f"Missing columns for plane {plane}: {x_col}, {y_col}, {z_col}")
 
-            hits[0, i, :] = torch.tensor(
-                df[x_col].values, dtype=dtype_hit, device=DEVICE
-            )
-            hits[1, i, :] = torch.tensor(
-                df[y_col].values, dtype=dtype_hit, device=DEVICE
-            )
-            hits[2, i, :] = torch.tensor(
-                df[z_col].values, dtype=dtype_hit, device=DEVICE
-            )
+            hits[0, i, :] = torch.tensor(df[x_col].values, dtype=dtype_hit, device=DEVICE)
+            hits[1, i, :] = torch.tensor(df[y_col].values, dtype=dtype_hit, device=DEVICE)
+            hits[2, i, :] = torch.tensor(df[z_col].values, dtype=dtype_hit, device=DEVICE)
 
         return hits
 
@@ -204,9 +186,7 @@ class Hits:
             E (Tensor): Muons energy, with size (n_mu)
         """
         if "E" not in df:
-            raise KeyError(
-                "Column 'E' not found in the DataFrame. Muon energy set to 0."
-            )
+            raise KeyError("Column 'E' not found in the DataFrame. Muon energy set to 0.")
         return torch.tensor(df["E"].values, dtype=dtype_E, device=DEVICE)
 
     @staticmethod
@@ -321,9 +301,7 @@ class Hits:
         dy = (hits[1, plane_label].max() - hits[1, plane_label].min()).item()
 
         # Get the number of bins as function of the xy ratio
-        bins_x, bins_y, pixel_size = get_n_bins_xy_from_xy_span(
-            dx=dx, dy=dy, n_bins=n_bins
-        )
+        bins_x, bins_y, pixel_size = get_n_bins_xy_from_xy_span(dx=dx, dy=dy, n_bins=n_bins)
 
         # Plot hits as 2D histogram
         h = ax.hist2d(
@@ -348,9 +326,7 @@ class Hits:
 
         # Add colorbar
         cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-        fig.colorbar(
-            h[3], cax=cbar_ax, label=f"# hits / {pixel_size**2:.0f} {d_unit}$^2$"
-        )
+        fig.colorbar(h[3], cax=cbar_ax, label=f"# hits / {pixel_size**2:.0f} {d_unit}$^2$")
 
         # Save plot
         if filename is not None:
@@ -385,10 +361,7 @@ class Hits:
         Hits data as a Tensor with size (3, n_plane, mu).
         """
         if self._gen_hits is None:
-            self._gen_hits = (
-                self.get_hits_from_df(self._df, self.plane_labels)
-                * self._unit_coef[self.input_unit]
-            )
+            self._gen_hits = self.get_hits_from_df(self._df, self.plane_labels) * self._unit_coef[self.input_unit]
         return self._gen_hits
 
     @gen_hits.setter
@@ -403,9 +376,7 @@ class Hits:
         if self.spatial_res is None:
             return self.gen_hits
         elif self._reco_hits is None:
-            self._reco_hits = self.get_reco_hits_from_gen_hits(
-                gen_hits=self.gen_hits, spatial_res=self.spatial_res
-            )
+            self._reco_hits = self.get_reco_hits_from_gen_hits(gen_hits=self.gen_hits, spatial_res=self.spatial_res)
         return self._reco_hits
 
     @reco_hits.setter
