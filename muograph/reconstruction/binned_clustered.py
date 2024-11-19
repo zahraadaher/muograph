@@ -28,7 +28,7 @@ class BCA(POCA):
         "n_max_per_vox": 10,
         "n_min_per_vox": 3,
         "score_method": partial(np.quantile, q=0.5),
-        "metric_method": np.log,  # type: ignore
+        "metric_method": partial(np.log),  # type: ignore
         "p_range": (0.0, 10000000),  # MeV
         "dtheta_range": (0.0, math.pi / 3),
         "use_p": False,
@@ -369,8 +369,6 @@ class BCA(POCA):
             - n_min_per_voxel:int, the min number of POCA point per voxel.
             If a voxel contains less than n_min_per_voxel, is final score will be 0.
         """
-
-        self.create_directory(self.dir_name)
 
         # Copy relevant features before event selection
         self.bca_tracks = deepcopy(self.tracks)

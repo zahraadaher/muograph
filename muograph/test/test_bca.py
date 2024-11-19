@@ -50,7 +50,7 @@ def test_bca_predictions() -> None:
         "n_max_per_vox": 20,
         "n_min_per_vox": 3,
         "score_method": partial(np.quantile, q=0.5),
-        "metric_method": np.log,  # type: ignore
+        "metric_method": partial(np.log),  # type: ignore
         "p_range": (0, 1000000),
         "dtheta_range": (0.05 * math.pi / 180, 20 * math.pi / 180),
     }
