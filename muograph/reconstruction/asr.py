@@ -4,22 +4,22 @@ from functools import partial
 import math
 import torch
 from torch import Tensor
+from torch.nn.functional import normalize
 from pathlib import Path
 from fastprogress import progress_bar
 import h5py
 
-from utils.save import AbsSave
-from tracking.tracking import TrackingMST
-from volume.volume import Volume
-from plotting.voxel import VoxelPlotting
-from utils.tools import normalize
+from muograph.utils.save import AbsSave
+from muograph.tracking.tracking import TrackingMST
+from muograph.volume.volume import Volume
+from muograph.plotting.voxel import VoxelPlotting
 
 value_type = Union[partial, Tuple[float, float], bool]
 
 
 class ASR(AbsSave, VoxelPlotting):
     _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
-    _triggered_voxels: Optional[List[Tensor]] = None
+    _triggered_voxels: Optional[List[np.ndarray]] = None
     _n_mu_per_vox: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds = True
 
@@ -56,7 +56,7 @@ class ASR(AbsSave, VoxelPlotting):
             self.triggered_voxels = self.load_triggered_vox(triggered_vox_file)
 
     @staticmethod
-    def save_triggered_vox(triggered_voxels: List[Tensor], directory: Path, filename: str) -> None:
+    def save_triggered_vox(triggered_voxels: List[np.ndarray], directory: Path, filename: str) -> None:
         r"""
         Method for saving triggered voxel as a hdf5 file.
         """
@@ -82,8 +82,8 @@ class ASR(AbsSave, VoxelPlotting):
         points_in: Tensor,
         points_out: Tensor,
         voi: Volume,
-        theta_xy_in: Tuple[Tensor],
-        theta_xy_out: Tuple[Tensor],
+        theta_xy_in: Tuple[Tensor, Tensor],
+        theta_xy_out: Tuple[Tensor, Tensor],
     ) -> Tuple[Tensor, Tensor]:
         r"""
         Compute muon position (x,y,z) when enters/exits the volume,
@@ -172,7 +172,7 @@ class ASR(AbsSave, VoxelPlotting):
         return xyz_discrete_in, xyz_discrete_out
 
     @staticmethod
-    def _find_sub_volume(voi: Volume, xyz_in_voi: torch.Tensor, xyz_out_voi: torch.Tensor) -> List[torch.Tensor]:
+    def _find_sub_volume(voi: Volume, xyz_in_voi: Tensor, xyz_out_voi: Tensor) -> List[List[Tensor]]:
         r"""
         Find the xy voxel indices of the sub-volume which contains both incoming and outgoing tracks.
 
@@ -214,10 +214,10 @@ class ASR(AbsSave, VoxelPlotting):
     @staticmethod
     def _find_triggered_voxels(
         voi: Volume,
-        sub_vol_indices_min_max: List[Tensor],
+        sub_vol_indices_min_max: List[List[Tensor]],
         xyz_discrete_in: Tensor,
         xyz_discrete_out: Tensor,
-    ) -> List[Tensor]:
+    ) -> List[np.ndarray]:
         r"""
         For each muon incoming and outgoing tracks, find the associated triggered voxels.
         Only voxels triggered by both INCOMING and OUTGOING tracks are kept.
@@ -273,7 +273,7 @@ class ASR(AbsSave, VoxelPlotting):
                 vox_list = (sub_mask_in & sub_mask_out).nonzero()[:, :-1].unique(dim=0)
                 vox_list[:, 0] += ix_min
                 vox_list[:, 1] += iy_min
-                triggered_voxels.append(vox_list.numpy())
+                triggered_voxels.append(vox_list.detach().cpu().numpy())
             else:
                 triggered_voxels.append([])
         return triggered_voxels
@@ -310,8 +310,8 @@ class ASR(AbsSave, VoxelPlotting):
         points_in: Tensor,
         points_out: Tensor,
         voi: Volume,
-        theta_xy_in: Tensor,
-        theta_xy_out: Tensor,
+        theta_xy_in: Tuple[Tensor, Tensor],
+        theta_xy_out: Tuple[Tensor, Tensor],
     ) -> List[np.ndarray]:
         """
         Gets the `xyz` indices of the voxels along each muon path, as a list of np.ndarray.
@@ -366,9 +366,9 @@ class ASR(AbsSave, VoxelPlotting):
         ]
 
         if self._ars_params["use_p"]:
-            score = np.log(self.tracks.dtheta.numpy() * self.tracks.E.numpy())
+            score = np.log(self.tracks.dtheta.detach().cpu().numpy() * self.tracks.E.detach().cpu().numpy())
         else:
-            score = self.tracks.dtheta.numpy()
+            score = self.tracks.dtheta.detach().cpu().numpy()
 
         mask_E = (self.tracks.E > self.asr_params["p_range"][0]) & (  # type: ignore
             self.tracks.E < self.asr_params["p_range"][1]  # type: ignore
@@ -467,11 +467,11 @@ class ASR(AbsSave, VoxelPlotting):
         return self._xyz_voxel_pred
 
     @property
-    def density_pred_norm(self) -> Tensor:
+    def xyz_voxel_pred_norm(self) -> Tensor:
         r"""
         The normalized scattering density predictions.
         """
-        return normalize(self.density_pred)
+        return normalize(self.xyz_voxel_pred)
 
     @property
     def triggered_voxels(self) -> List[np.ndarray]:
@@ -489,7 +489,7 @@ class ASR(AbsSave, VoxelPlotting):
         return self._triggered_voxels
 
     @triggered_voxels.setter
-    def triggered_voxels(self, value: List[Tensor]) -> None:
+    def triggered_voxels(self, value: List[np.ndarray]) -> None:
         self._triggered_voxels = value
 
     @property
@@ -499,5 +499,5 @@ class ASR(AbsSave, VoxelPlotting):
         return self._n_mu_per_vox
 
     @n_mu_per_vox.setter
-    def n_mu_per_vox(self, value: Tensor) -> Tensor:
+    def n_mu_per_vox(self, value: Tensor) -> None:
         self._n_mu_per_vox = value

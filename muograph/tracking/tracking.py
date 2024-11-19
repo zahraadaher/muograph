@@ -5,9 +5,9 @@ import math
 import matplotlib.pyplot as plt
 import matplotlib
 
-from utils.save import AbsSave
-from hits.hits import Hits
-from plotting.params import n_bins, alpha, font, titlesize, hist_figsize, labelsize
+from muograph.utils.save import AbsSave
+from muograph.hits.hits import Hits
+from muograph.plotting.params import n_bins, alpha, font, titlesize, hist_figsize, labelsize
 
 
 class Tracking(AbsSave):
@@ -474,7 +474,7 @@ class Tracking(AbsSave):
         return self._angular_res
 
     @angular_res.setter
-    def angular_res(self, value: Tensor) -> None:
+    def angular_res(self, value: float) -> None:
         self._angular_res = value
 
     @property

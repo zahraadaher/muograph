@@ -1,24 +1,25 @@
-from hits.hits import Hits
-from tracking.tracking import Tracking, TrackingMST
-from reconstruction.poca import POCA
-from volume.volume import Volume
+from muograph.hits.hits import Hits
+from muograph.tracking.tracking import Tracking, TrackingMST
+from muograph.reconstruction.poca import POCA
+from muograph.volume.volume import Volume
+from muograph.utils.save import muograph_path
+
 import os
 from pathlib import Path
-from utils.save import muograph_path
 import torch
 import numpy as np
 
 # Test data file path
 TEST_HIT_FILE = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
-VOI = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
+VOI = Volume(position=(0, 0, -1200), dimension=(1000, 600, 600), voxel_width=20)
 
 
 def get_mst(hits_file: str) -> TrackingMST:
     hits_in = Hits(
         plane_labels=(0, 1, 2),
         csv_filename=hits_file,
-        spatial_res=[1.0, 1.0, 0.0],
-        energy_range=[0.0, 1_000_000],
+        spatial_res=(1.0, 1.0, 0.0),
+        energy_range=(0.0, 1_000_000),
         efficiency=0.98,
         input_unit="mm",
     )
@@ -26,8 +27,8 @@ def get_mst(hits_file: str) -> TrackingMST:
     hits_out = Hits(
         plane_labels=(3, 4, 5),
         csv_filename=hits_file,
-        spatial_res=[1.0, 1.0, 0.0],
-        energy_range=[0.0, 1_000_000],
+        spatial_res=(1.0, 1.0, 0.0),
+        energy_range=(0.0, 1_000_000),
         efficiency=0.98,
         input_unit="mm",
     )
@@ -45,14 +46,14 @@ def test_poca_loading() -> None:
 
     poca = POCA(tracking=mst, voi=VOI, output_dir=output_dir)
 
-    def compare_attr(attr: str, ref_instance: Tracking, loaded_instance: Tracking) -> bool:
+    def compare_attr(attr: str, ref_instance: POCA, loaded_instance: POCA) -> bool:
         r"""
-        Compares a specific attribute between a reference and a loaded Tracking instance.
+        Compares a specific attribute between a reference and a loaded POCA instance.
 
         Args:
             attr (str): The attribute to compare.
-            ref_instance (Tracking): The reference Tracking instance.
-            loaded_instance (Tracking): The loaded Tracking instance.
+            ref_instance (POCA): The reference POCA instance.
+            loaded_instance (POCA): The loaded POCA instance.
 
         Returns:
             bool: True if the attributes match, False otherwise.

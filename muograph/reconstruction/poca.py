@@ -1,21 +1,21 @@
 import torch
 from torch import Tensor
 from copy import deepcopy
-from typing import Optional, List
+from typing import Optional
 from fastprogress import progress_bar
 import numpy as np
 
-from utils.save import AbsSave
-from utils.device import DEVICE
-from utils.datatype import dtype_track, dtype_n
-from volume.volume import Volume
-from tracking.tracking import TrackingMST
-from plotting.voxel import VoxelPlotting
+from muograph.utils.save import AbsSave
+from muograph.utils.device import DEVICE
+from muograph.utils.datatype import dtype_track, dtype_n
+from muograph.volume.volume import Volume
+from muograph.tracking.tracking import TrackingMST
+from muograph.plotting.voxel import VoxelPlotting
 
 
 def are_parallel(v1: Tensor, v2: Tensor, tol: float = 1e-5) -> bool:
     cross_prod = torch.linalg.cross(v1, v2)
-    return torch.all(torch.abs(cross_prod) < tol)
+    return bool(torch.all(torch.abs(cross_prod) < tol).detach().cpu().item())
 
 
 class POCA(AbsSave, VoxelPlotting):
@@ -191,7 +191,7 @@ class POCA(AbsSave, VoxelPlotting):
         return M
 
     @staticmethod
-    def assign_voxel_to_pocas(poca_points: Tensor, voi: Volume, batch_size: int) -> List[List[int]]:
+    def assign_voxel_to_pocas(poca_points: Tensor, voi: Volume, batch_size: int) -> Tensor:
         """
         Get the indinces of the voxel corresponding to each poca point.
 

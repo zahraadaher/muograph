@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 from typing import Tuple
-from utils.device import DEVICE
+from muograph.utils.device import DEVICE
 
 
 class Volume:

@@ -1,17 +1,17 @@
 from typing import Optional, Tuple, List, Dict, Union
 import torch
 from torch import Tensor
+from torch.nn.functional import normalize
 from copy import deepcopy
 from functools import partial
 import numpy as np
 import math
 from pathlib import Path
 
-from utils.tools import normalize
-from utils.device import DEVICE
-from tracking.tracking import TrackingMST
-from reconstruction.poca import POCA
-from volume.volume import Volume
+from muograph.utils.device import DEVICE
+from muograph.tracking.tracking import TrackingMST
+from muograph.reconstruction.poca import POCA
+from muograph.volume.volume import Volume
 
 value_type = Union[float, partial, Tuple[float, float], bool, int]
 bca_params_type = Dict[str, value_type]
@@ -28,7 +28,7 @@ class BCA(POCA):
         "n_max_per_vox": 10,
         "n_min_per_vox": 3,
         "score_method": partial(np.quantile, q=0.5),
-        "metric_method": partial(np.log),
+        "metric_method": np.log,  # type: ignore
         "p_range": (0.0, 10000000),  # MeV
         "dtheta_range": (0.0, math.pi / 3),
         "use_p": False,
@@ -39,7 +39,7 @@ class BCA(POCA):
     def __init__(
         self,
         voi: Volume,
-        tracking: TrackingMST = None,
+        tracking: TrackingMST,
         output_dir: Optional[str] = None,
     ) -> None:
         r"""
@@ -72,7 +72,7 @@ class BCA(POCA):
         """
 
         points = points.reshape((points.size()[0], 3, 1))
-        distances = torch.sqrt(torch.sum(torch.square(points - points.T), axis=1))
+        distances = torch.sqrt(torch.sum(torch.square(points - points.T), dim=1))
         return distances
 
     @staticmethod
@@ -491,11 +491,11 @@ class BCA(POCA):
         return self._xyz_voxel_pred
 
     @property
-    def pred_norm(self) -> Tensor:
+    def xyz_voxel_pred_norm(self) -> Tensor:
         r"""
         The normalized scattering density predictions.
         """
-        return normalize(self.xyz_voxel_pred)
+        return normalize(self.xyz_voxel_pred.float())
 
     @property
     def dir_name(self) -> Path:

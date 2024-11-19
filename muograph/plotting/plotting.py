@@ -4,8 +4,8 @@ from torch import Tensor
 from typing import Tuple, Optional
 import numpy as np
 
-from volume.volume import Volume
-from plotting.params import d_unit, n_bins_2D
+from muograph.volume.volume import Volume
+from muograph.plotting.params import d_unit, n_bins_2D
 
 
 def plot_n_poca_per_voxel(n_poca_per_vox: Tensor, dim: int, plot_name: Optional[str] = None) -> None:
@@ -154,7 +154,7 @@ def plot_poca_points_hist2d(poca_points: Tensor, voi: Volume, dim: int = 2) -> N
         - poca_points: Tensor poca points location.
         - dim: integer defining the projection. dim = 0 -> YZ, dim = 1 -> XZ, dim = 2 -> XY.
     """
-    poca_points = poca_points.numpy()
+    poca_points_np = poca_points.detach().cpu().numpy()
 
     dims = [_ for _ in [0, 1, 2] if _ != dim]
     labels = ["x", "y", "z"]
@@ -162,8 +162,8 @@ def plot_poca_points_hist2d(poca_points: Tensor, voi: Volume, dim: int = 2) -> N
     fig.suptitle("POCA points location", fontsize=15, fontweight="bold")
 
     im = ax.hist2d(
-        poca_points[:, dims[0]],
-        poca_points[:, dims[1]],
+        poca_points_np[:, dims[0]],
+        poca_points_np[:, dims[1]],
         bins=(voi.n_vox_xyz[dims[0]], voi.n_vox_xyz[dims[1]]),
     )
 

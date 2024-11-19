@@ -6,16 +6,16 @@ from typing import Optional, Tuple, Dict
 import matplotlib
 import matplotlib.pyplot as plt
 
-from plotting.plotting import get_n_bins_xy_from_xy_span
-from plotting.params import (
+from muograph.plotting.plotting import get_n_bins_xy_from_xy_span
+from muograph.plotting.params import (
     font,
     d_unit,
     n_bins_2D,
     hist_figsize,
     labelsize,
 )
-from utils.datatype import dtype_hit, dtype_E
-from utils.device import DEVICE
+from muograph.utils.datatype import dtype_hit, dtype_E
+from muograph.utils.device import DEVICE
 
 allowed_d_units = ["m", "cm", "mm", "dm"]
 

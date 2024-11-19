@@ -5,6 +5,7 @@ description = "Muon tomography data analysis library"
 authors = ["Maxime Lagrange"]
 readme = "README.md"
 keywords = ["physics", "science", "statistics", "tomography"]
+include = ["muograph/py.typed"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -17,7 +18,7 @@ fastprogress = "1.0.0"
 pandas = ">=1.2.4,<2.0.0"
 h5py = "^3.10.0"
 scipy = "^1.14.1"
-pytest = "^8.3.3"
+pytest = "<8.0.0"
 
 [tool.poetry.group.dev.dependencies]
 notebook = "<7.0.0"

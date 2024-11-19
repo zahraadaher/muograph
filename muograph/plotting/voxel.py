@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
-from volume.volume import Volume
-from plotting.params import (
+from muograph.volume.volume import Volume
+from muograph.plotting.params import (
     font,
     d_unit,
     scale,
@@ -112,20 +112,22 @@ class VoxelPlotting:
 
         if isinstance(voi_slice, int):  # type: ignore
             if dim == 2:
-                return xyz_voxel_preds[:, :, voi_slice]
+                preds = xyz_voxel_preds[:, :, voi_slice]
             elif dim == 1:
-                return xyz_voxel_preds[:, voi_slice, :]
+                preds = xyz_voxel_preds[:, voi_slice, :]
             elif dim == 0:
-                return xyz_voxel_preds[voi_slice, :, :]
+                preds = xyz_voxel_preds[voi_slice, :, :]
 
         elif isinstance(voi_slice, tuple) and len(voi_slice) == 2:
             start, end = voi_slice
             if dim == 2:
-                return xyz_voxel_preds[:, :, start : end + 1].mean(dim=2)
+                preds = xyz_voxel_preds[:, :, start : end + 1].mean(dim=2)
             elif dim == 1:
-                return xyz_voxel_preds[:, start : end + 1, :].mean(dim=1)
+                preds = xyz_voxel_preds[:, start : end + 1, :].mean(dim=1)
             elif dim == 0:
-                return xyz_voxel_preds[start : end + 1, :, :].mean(dim=0)
+                preds = xyz_voxel_preds[start : end + 1, :, :].mean(dim=0)
+
+        return preds
 
     @staticmethod
     def get_voi_slice(dim: int, voi: Volume, voi_slice: Union[int, Tuple[int, int]]) -> Tuple[float, float]:
@@ -317,10 +319,10 @@ class VoxelPlotting:
         }
 
         # Compute the figure size based on the plot xy ratio
-        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)
+        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)  # type: ignore
 
         # Compute figure size based on the main axis size
-        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)
+        figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)  # type: ignore
         # Create the main figure
         fig, ax = plt.subplots(figsize=figsize)
 
@@ -399,12 +401,12 @@ class VoxelPlotting:
         # Set same range for x and y histograms
         if reference_value is not None:
             min_pred_xy = min(
-                np.min(dim_mapping[dim]["x_data"]),
-                np.min(dim_mapping[dim]["y_data"]),
+                np.min(dim_mapping[dim]["x_data"]),  # type: ignore
+                np.min(dim_mapping[dim]["y_data"]),  # type: ignore
             )
             max_pred_xy = max(
-                np.max(dim_mapping[dim]["x_data"]),
-                np.min(dim_mapping[dim]["y_data"]),
+                np.max(dim_mapping[dim]["x_data"]),  # type: ignore
+                np.min(dim_mapping[dim]["y_data"]),  # type: ignore
                 reference_value,
             )
             ax_histx.set_ylim(min_pred_xy * 0.98, max_pred_xy * 1.02)
@@ -431,7 +433,7 @@ class VoxelPlotting:
         # Save plot
         if filename is not None:
             plt.savefig(
-                filename + "_" + dim_mapping[dim]["plane"] + "_view",
+                filename + "_" + dim_mapping[dim]["plane"] + "_view",  # type: ignore
                 bbox_inches="tight",
             )
         plt.show()
@@ -510,11 +512,11 @@ class VoxelPlotting:
             ]
 
             # Calculate vmin and vmax
-            vmin = float("inf")
-            vmax = float("-inf")
+            vmin = float("inf")  # type: ignore
+            vmax = float("-inf")  # type: ignore
             for slice_pred in sliced_preds:
-                vmin = min(vmin, torch.min(slice_pred))
-                vmax = max(vmax, torch.max(slice_pred))
+                vmin = min(vmin, torch.min(slice_pred))  # type: ignore
+                vmax = max(vmax, torch.max(slice_pred))  # type: ignore
 
         # Mapping for dimension-specific attributes
         dim_mapping = {
@@ -810,13 +812,13 @@ class VoxelPlotting:
         }
 
         # Set axis limits
-        ax.set_xlim(mapping[dim]["x_lim"])  # OK
-        ax.set_ylim(mapping[dim]["y_lim"])  # OK
+        ax.set_xlim(mapping[dim]["x_lim"])
+        ax.set_ylim(mapping[dim]["y_lim"])
         ax.set_aspect("equal")
 
         # Set axis labels
-        ax.set_xlabel(mapping[dim]["x_label"] + f" [{d_unit}]")
-        ax.set_ylabel(mapping[dim]["y_label"] + f" [{d_unit}]")
+        ax.set_xlabel(mapping[dim]["x_label"] + f" [{d_unit}]")  # type: ignore
+        ax.set_ylabel(mapping[dim]["y_label"] + f" [{d_unit}]")  # type: ignore
 
         # Plot voxel grid
         for x in mapping[dim]["x_edges"]:

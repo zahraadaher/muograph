@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import List, Optional
 from torch import Tensor
-from utils.device import DEVICE
 import numpy as np
 import h5py
 import os
+
+from muograph.utils.device import DEVICE
 
 muograph_path = str(Path(__file__).parent.parent.parent).split("/muograph/")[0] + "/muograph/"
 default_output_dir: str = muograph_path + "/output/"

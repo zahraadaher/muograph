@@ -1,17 +1,18 @@
-from hits.hits import Hits
-from tracking.tracking import Tracking, TrackingMST
-from reconstruction.binned_clustered import BCA
-from volume.volume import Volume
+from muograph.hits.hits import Hits
+from muograph.tracking.tracking import Tracking, TrackingMST
+from muograph.reconstruction.binned_clustered import BCA
+from muograph.volume.volume import Volume
+from muograph.utils.save import muograph_path
+
 import os
 from pathlib import Path
-from utils.save import muograph_path
 import numpy as np
 from functools import partial
 import math
 
 # Test data file path
 TEST_HIT_FILE = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
-VOI = Volume(position=[0, 0, -1200], dimension=[1000, 600, 600], voxel_width=20)
+VOI = Volume(position=(0, 0, -1200), dimension=(1000, 600, 600), voxel_width=20)
 OUPUT_DIR = str(Path(muograph_path) / "../test_output/")
 
 
@@ -19,8 +20,8 @@ def get_mst(hits_file: str) -> TrackingMST:
     hits_in = Hits(
         plane_labels=(0, 1, 2),
         csv_filename=hits_file,
-        spatial_res=[1.0, 1.0, 0.0],
-        energy_range=[0.0, 1_000_000],
+        spatial_res=(1.0, 1.0, 0.0),
+        energy_range=(0.0, 1_000_000),
         efficiency=0.98,
         input_unit="mm",
     )
@@ -28,8 +29,8 @@ def get_mst(hits_file: str) -> TrackingMST:
     hits_out = Hits(
         plane_labels=(3, 4, 5),
         csv_filename=hits_file,
-        spatial_res=[1.0, 1.0, 0.0],
-        energy_range=[0.0, 1_000_000],
+        spatial_res=(1.0, 1.0, 0.0),
+        energy_range=(0.0, 1_000_000),
         efficiency=0.98,
         input_unit="mm",
     )
@@ -49,7 +50,7 @@ def test_bca_predictions() -> None:
         "n_max_per_vox": 20,
         "n_min_per_vox": 3,
         "score_method": partial(np.quantile, q=0.5),
-        "metric_method": partial(np.log),
+        "metric_method": np.log,  # type: ignore
         "p_range": (0, 1000000),
         "dtheta_range": (0.05 * math.pi / 180, 20 * math.pi / 180),
     }
