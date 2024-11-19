@@ -6,7 +6,6 @@ from functools import partial
 import numpy as np
 import math
 from pathlib import Path
-import fastprogress
 
 from utils.tools import normalize
 from utils.device import DEVICE
