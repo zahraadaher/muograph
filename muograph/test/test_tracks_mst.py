@@ -1,4 +1,4 @@
-from hits.hits import Hits
+from muograph.hits.hits import Hits
 from tracking.tracking import Tracking, TrackingMST
 from typing import Tuple, Optional
 from pathlib import Path

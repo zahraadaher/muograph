@@ -3,6 +3,7 @@ from torch import Tensor
 from typing import Tuple
 from utils.device import DEVICE
 
+
 class Volume:
     r"""
     Class for handling volume of interest and its voxelization.
@@ -36,11 +37,7 @@ class Volume:
         self.vox_width = voxel_width
 
     def __repr__(self) -> str:
-        return (
-            f"Volume of interest at x,y,z = "
-            f"{self.xyz[0]:.2f},{self.xyz[1]:.2f},{self.xyz[2]:.2f}, "
-            f"voxel size = {self.vox_width:.2f} mm"
-        )
+        return f"Volume of interest at x,y,z = " f"{self.xyz[0]:.2f},{self.xyz[1]:.2f},{self.xyz[2]:.2f}, " f"voxel size = {self.vox_width:.2f} mm"
 
     @staticmethod
     def compute_n_voxel(vox_width: float, dxyz: Tensor) -> Tuple[int, int, int]:
@@ -60,10 +57,7 @@ class Volume:
 
         n_vox = dxyz / vox_width
         if not torch.all(n_vox % 1 == 0):
-            raise ValueError(
-                "Voxel size does not match VOI dimensions. "
-                "Ensure that dimension / voxel_width = integer."
-            )
+            raise ValueError("Voxel size does not match VOI dimensions. " "Ensure that dimension / voxel_width = integer.")
 
         nx, ny, nz = n_vox.int().tolist()
 
@@ -116,9 +110,7 @@ class Volume:
 
         # Compute voxel edges by adding/subtracting half of the voxel width
         half_width = vox_width / 2
-        voxel_edges = torch.stack(
-            [voxel_centers - half_width, voxel_centers + half_width], dim=-2
-        )
+        voxel_edges = torch.stack([voxel_centers - half_width, voxel_centers + half_width], dim=-2)
 
         return voxel_centers, voxel_edges
 
@@ -131,9 +123,7 @@ class Volume:
             x (`Tuple[int, int, int]`): The number of voxels along the x, y, z dimensions.
         """
         if self._n_vox_xyz is None:
-            self._n_vox_xyz = self.compute_n_voxel(
-                vox_width=self.vox_width, dxyz=self.dxyz
-            )
+            self._n_vox_xyz = self.compute_n_voxel(vox_width=self.vox_width, dxyz=self.dxyz)
         return self._n_vox_xyz
 
     @property
