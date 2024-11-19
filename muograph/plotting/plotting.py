@@ -8,9 +8,7 @@ from volume.volume import Volume
 from plotting.params import d_unit, n_bins_2D
 
 
-def plot_n_poca_per_voxel(
-    n_poca_per_vox: Tensor, dim: int, plot_name: Optional[str] = None
-) -> None:
+def plot_n_poca_per_voxel(n_poca_per_vox: Tensor, dim: int, plot_name: Optional[str] = None) -> None:
     r"""
     Plot the average number of poca point per voxel along a certain direction.
 
@@ -130,9 +128,7 @@ def plot_poca_points(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection="scatter_density")
 
-    ax.scatter(
-        poca_points[:, dimx[dim]].numpy(), poca_points[:, dimy[dim]].numpy(), alpha=0.01
-    )
+    ax.scatter(poca_points[:, dimx[dim]].numpy(), poca_points[:, dimy[dim]].numpy(), alpha=0.01)
 
     fig.suptitle(
         "Average {}{} distribution of POCA points".format(xlabels[dim], ylabels[dim]),
@@ -200,9 +196,7 @@ def plot_voxel_pred(pred: Tensor, dim: int, plot_name: Optional[str] = None) -> 
         fontweight="bold",
         fontsize=15,
     )
-    im = ax.imshow(
-        pred.sum(dim=dim).T / pred.size()[dim], interpolation="nearest", origin="lower"
-    )
+    im = ax.imshow(pred.sum(dim=dim).T / pred.size()[dim], interpolation="nearest", origin="lower")
 
     ax.set_xlabel(xlabels[dim] + f" [{d_unit}]")
     ax.set_ylabel(ylabels[dim] + f" [{d_unit}]")
@@ -243,9 +237,7 @@ def plot_2d_vector(
     ax.set_aspect("equal")
 
 
-def get_n_bins_xy_from_xy_span(
-    dx: float, dy: float, n_bins: int = n_bins_2D
-) -> Tuple[int, int, int]:
+def get_n_bins_xy_from_xy_span(dx: float, dy: float, n_bins: int = n_bins_2D) -> Tuple[int, int, int]:
     r"""
     Calculate the number of bins along the x and y dimensions based on the
     aspect ratio of the plot and the total desired number of bins.
