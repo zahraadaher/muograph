@@ -18,9 +18,9 @@ bca_params_type = Dict[str, value_type]
 
 
 class BCA(POCA):
-    _pred: Tensor = None  # (Nx, Ny, Nz)
-    _normalized_pred: Tensor = None  # (Nx, Ny, Nz)
-    _hit_per_voxel: Tensor = None  # (Nx, Ny, Nz)
+    _pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
+    _normalized_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
+    _hit_per_voxel: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds: bool = True
 
@@ -344,7 +344,7 @@ class BCA(POCA):
         """
         return Path(str(self.output_dir) + "/" + self.bca_name + "/")
 
-    def get_bca_pred(self) -> Tuple[Tensor, Tensor]:
+    def get_bca_pred(self) -> Tensor:
         """
         Run the BCA algorithm, as implemented in:
         A binned clustering algorithm to detect high-Z material using cosmic muons,
@@ -417,11 +417,11 @@ class BCA(POCA):
         )
 
         # compute fina scores
-        pred, hit_per_voxel = self.compute_final_scores(score_list=self.score_list, score_method=self.bca_params["score_method"])  # type: ignore
+        pred, self._hit_per_voxel = self.compute_final_scores(score_list=self.score_list, score_method=self.bca_params["score_method"])  # type: ignore
 
         self._recompute_preds = False
 
-        return pred, hit_per_voxel
+        return pred
 
     def get_bca_name(
         self,
@@ -485,8 +485,12 @@ class BCA(POCA):
         The scattering density predictions.
         """
         if (self._xyz_voxel_pred is None) | (self._recompute_preds):
-            self._xyz_voxel_pred, self._hit_per_voxel = self.get_bca_pred()
+            self._xyz_voxel_pred = self.get_bca_pred()
         return self._xyz_voxel_pred
+
+    @property
+    def hit_per_voxel(self) -> Tensor:
+        return self._hit_per_voxel
 
     @property
     def xyz_voxel_pred_norm(self) -> Tensor:

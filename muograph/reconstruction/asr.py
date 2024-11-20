@@ -353,7 +353,7 @@ class ASR(AbsSave, VoxelPlotting):
             xyz_discrete_out=xyz_discrete_out,
         )
 
-    def get_density_pred(self) -> Tensor:
+    def get_xyz_voxel_pred(self) -> Tensor:
         r"""
         Computes the density predictions per voxel.
 
@@ -463,7 +463,7 @@ class ASR(AbsSave, VoxelPlotting):
         The scattering density predictions.
         """
         if (self._xyz_voxel_pred is None) | (self._recompute_preds):
-            self._xyz_voxel_pred = self.get_density_pred()
+            self._xyz_voxel_pred = self.get_xyz_voxel_pred()
         return self._xyz_voxel_pred
 
     @property
