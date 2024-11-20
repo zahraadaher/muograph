@@ -7,13 +7,30 @@ from muograph.tracking.tracking import TrackingMST
 from muograph.plotting.voxel import VoxelPlotting
 
 
+r"""
+Provides class for voxel-wise scattering density predictions.
+"""
+
+
 class AbsVoxelInferer(
     VoxelPlotting,
 ):
+    r"""
+    Class used for handling the computation and plotting of voxel-wise scattering density predictions
+    """
     _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds = True
 
     def __init__(self, voi: Volume, tracking: TrackingMST) -> None:
+        r"""
+        Initializes the AbsVoxelInferer object with an instance of the TrackingMST class and Volume class.
+
+        Args:
+            - voi (Volume) Instance of the Volume class. The BCA algo. relying on voxelized
+            volume, `voi` has to be provided.
+            - tracking (Optional[TrackingMST]) Instance of the TrackingMST class.
+        """
+
         VoxelPlotting.__init__(self, voi=voi)
         self.tracks = tracking
 
