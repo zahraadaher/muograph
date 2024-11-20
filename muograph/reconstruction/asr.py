@@ -4,7 +4,6 @@ from functools import partial
 import math
 import torch
 from torch import Tensor
-from torch.nn.functional import normalize
 from pathlib import Path
 from fastprogress import progress_bar
 import h5py
@@ -12,13 +11,12 @@ import h5py
 from muograph.utils.save import AbsSave
 from muograph.tracking.tracking import TrackingMST
 from muograph.volume.volume import Volume
-from muograph.plotting.voxel import VoxelPlotting
+from muograph.reconstruction.voxel_inferer import AbsVoxelInferer
 
 value_type = Union[partial, Tuple[float, float], bool]
 
 
-class ASR(AbsSave, VoxelPlotting):
-    _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
+class ASR(AbsSave, AbsVoxelInferer):
     _triggered_voxels: Optional[List[np.ndarray]] = None
     _n_mu_per_vox: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds = True
@@ -42,10 +40,7 @@ class ASR(AbsSave, VoxelPlotting):
         triggered_vox_file: Optional[str] = None,
     ) -> None:
         AbsSave.__init__(self, output_dir=output_dir)
-        VoxelPlotting.__init__(self, voi=voi)
-
-        self.voi = voi
-        self.tracks = tracking
+        AbsVoxelInferer.__init__(self, voi=voi, tracking=tracking)
 
         if triggered_vox_file is None:
             if self.output_dir is not None:
@@ -456,22 +451,6 @@ class ASR(AbsSave, VoxelPlotting):
                     self._ars_params[key] = value[key]
 
         self._recompute_preds = True
-
-    @property
-    def xyz_voxel_pred(self) -> Tensor:
-        r"""
-        The scattering density predictions.
-        """
-        if (self._xyz_voxel_pred is None) | (self._recompute_preds):
-            self._xyz_voxel_pred = self.get_xyz_voxel_pred()
-        return self._xyz_voxel_pred
-
-    @property
-    def xyz_voxel_pred_norm(self) -> Tensor:
-        r"""
-        The normalized scattering density predictions.
-        """
-        return normalize(self.xyz_voxel_pred)
 
     @property
     def triggered_voxels(self) -> List[np.ndarray]:

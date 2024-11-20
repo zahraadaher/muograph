@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, List, Dict, Union
 import torch
 from torch import Tensor
-from torch.nn.functional import normalize
 from copy import deepcopy
 from functools import partial
 import numpy as np
@@ -12,17 +11,14 @@ from muograph.utils.device import DEVICE
 from muograph.tracking.tracking import TrackingMST
 from muograph.reconstruction.poca import POCA
 from muograph.volume.volume import Volume
+from muograph.reconstruction.voxel_inferer import AbsVoxelInferer
 
 value_type = Union[float, partial, Tuple[float, float], bool, int]
 bca_params_type = Dict[str, value_type]
 
 
-class BCA(POCA):
-    _pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
-    _normalized_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
+class BCA(POCA, AbsVoxelInferer):
     _hit_per_voxel: Optional[Tensor] = None  # (Nx, Ny, Nz)
-    _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
-    _recompute_preds: bool = True
 
     _bca_params: bca_params_type = {
         "n_max_per_vox": 10,
@@ -52,8 +48,9 @@ class BCA(POCA):
             - output_dir (Optional[str]) Path to a directory where to save BCA `pred`
             and `hit_per_voxel` attributes in a hdf5 file.
         """
+        AbsVoxelInferer.__init__(self, voi=voi, tracking=tracking)
+        POCA.__init__(self, tracking=tracking, voi=voi, output_dir=output_dir)
 
-        super().__init__(output_dir=output_dir, tracking=tracking, voi=voi, poca_file=None)
         self.bca_indices: Tensor = deepcopy(self.poca_indices)
         self.bca_poca_points: Tensor = deepcopy(self.poca_points)
         self.bca_tracks: TrackingMST = deepcopy(self.tracks)
@@ -344,7 +341,7 @@ class BCA(POCA):
         """
         return Path(str(self.output_dir) + "/" + self.bca_name + "/")
 
-    def get_bca_pred(self) -> Tensor:
+    def get_xyz_voxel_pred(self) -> Tensor:
         """
         Run the BCA algorithm, as implemented in:
         A binned clustering algorithm to detect high-Z material using cosmic muons,
@@ -480,24 +477,8 @@ class BCA(POCA):
         self._recompute_preds = True
 
     @property
-    def xyz_voxel_pred(self) -> Tensor:
-        r"""
-        The scattering density predictions.
-        """
-        if (self._xyz_voxel_pred is None) | (self._recompute_preds):
-            self._xyz_voxel_pred = self.get_bca_pred()
-        return self._xyz_voxel_pred
-
-    @property
     def hit_per_voxel(self) -> Tensor:
         return self._hit_per_voxel
-
-    @property
-    def xyz_voxel_pred_norm(self) -> Tensor:
-        r"""
-        The normalized scattering density predictions.
-        """
-        return normalize(self.xyz_voxel_pred.float())
 
     @property
     def dir_name(self) -> Path:
