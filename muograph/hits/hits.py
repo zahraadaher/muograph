@@ -19,6 +19,10 @@ from muograph.utils.device import DEVICE
 
 allowed_d_units = ["m", "cm", "mm", "dm"]
 
+r"""
+Provides class for handling muon hits and simulating detector response.
+"""
+
 
 class Hits:
     r"""
@@ -44,9 +48,9 @@ class Hits:
 
     def __init__(
         self,
-        plane_labels: Optional[Tuple[int, ...]] = None,
         csv_filename: Optional[str] = None,
         df: Optional[pd.DataFrame] = None,
+        plane_labels: Optional[Tuple[int, ...]] = None,
         spatial_res: Optional[Tuple[float, float, float]] = None,
         energy_range: Optional[Tuple[float, float]] = None,
         efficiency: float = 1.0,
@@ -57,12 +61,12 @@ class Hits:
         a CSV file path or an existing DataFrame.
 
         Args:
-            plane_labels (Optional[Tuple[int, ...]]): Specifies the plane labels to include from the data,
-                as a tuple of integers. Only hits from these planes will be loaded if provided.
             csv_filename (Optional[str]): The file path to the CSV containing hit and energy data.
                 Either `csv_filename` or `df` must be provided, but not both.
             df (Optional[pd.DataFrame]): A DataFrame containing hit and energy data. Use this instead of
                 loading data from a CSV file.
+            plane_labels (Optional[Tuple[int, ...]]): Specifies the plane labels to include from the data,
+                as a tuple of integers. Only hits from these planes will be loaded if provided.
             spatial_res (Optional[Tuple[float, float, float]]): The spatial resolution of detector panels
                 along the x, y, and z axes, in units specified by `input_unit`. Assumes uniform resolution
                 across all panels if provided.
@@ -118,6 +122,20 @@ class Hits:
         # Detector efficiency
         if (self.efficiency < 0.0) | (self.efficiency > 1.0):
             raise ValueError("Panels efficiency must be in [0., 1.].")
+
+    def __repr__(self) -> str:
+        description = f"Collection of hits from {self.n_mu} muons " f"on {self.n_panels} detector panels"
+
+        if self.spatial_res.sum() > 0:
+            res = ", ".join(f"{value:.2f}" for value in self.spatial_res.detach().cpu().numpy())
+            description += f",\n with spatial resolution [{res}] along x, y, z"
+
+        if self.efficiency < 1.0:
+            description += f", with panel efficiency of {self.efficiency * 100:.1f}%"
+
+        description += "."
+
+        return description
 
     @staticmethod
     def get_data_frame_from_csv(csv_filename: str) -> pd.DataFrame:
@@ -271,7 +289,7 @@ class Hits:
         self.gen_hits = self.gen_hits[:, :, mask]
         self.E = self.E[mask]
 
-    def plot_hits(
+    def plot(
         self,
         plane_label: int = 0,
         reco_hits: bool = True,
@@ -332,6 +350,13 @@ class Hits:
         if filename is not None:
             plt.savefig(filename, bbox_inches="tight")
         plt.show()
+
+    @property
+    def n_mu(self) -> int:
+        r"""
+        The number of muon events.
+        """
+        return self.gen_hits.size()[-1]
 
     @property
     def n_panels(self) -> int:
