@@ -124,11 +124,11 @@ class Hits:
             raise ValueError("Panels efficiency must be in [0., 1.].")
 
     def __repr__(self) -> str:
-        description = f"Collection of hits from {self.n_mu} muons " f"on {self.n_panels} detector panels"
+        description = f"Collection of hits from {self.n_mu:,d} muons " f"on {self.n_panels} detector panels"
 
         if self.spatial_res.sum() > 0:
             res = ", ".join(f"{value:.2f}" for value in self.spatial_res.detach().cpu().numpy())
-            description += f",\n with spatial resolution [{res}] along x, y, z"
+            description += f",\n with spatial resolution [{res}] mm along x, y, z"
 
         if self.efficiency < 1.0:
             description += f", with panel efficiency of {self.efficiency * 100:.1f}%"
