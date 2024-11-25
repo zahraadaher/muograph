@@ -69,7 +69,7 @@ class BCA(POCA, AbsVoxelInferer):
         """
 
         points = points.reshape((points.size()[0], 3, 1))
-        distances = torch.sqrt(torch.sum(torch.square(points - points.T), dim=1))
+        distances = torch.sqrt(torch.sum(torch.square(points - points.mT), dim=1))
         return distances
 
     @staticmethod

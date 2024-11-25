@@ -5,29 +5,32 @@ n_bins: int = 50
 
 # Histogram transparency
 alpha: float = 0.6
+alpha_sns: float = 0.4
 
 # Distance unit
 d_unit: str = "mm"
 
 # Matplotlib default font
-fontsize: int = 13
-labelsize: int = 12
-titlesize: int = 16
+fontsize: int = 16
+labelsize: int = 16
+titlesize: int = 20
 
 fontweigh: str = "normal"
-font = {"weight": "normal", "size": fontsize, "family": "Serif"}
+font = {"weight": "normal", "size": fontsize, "family": "sans-serif"}
 
 # Matplotlib colormaps
 cmap: str = "jet"
 
 # Histogram XY ratio
-xy_golden_ratio: float = 1.4
-hist_scale = 4.5
+xy_golden_ratio: float = 1.5
+hist_scale = 6
 hist_figsize: Tuple[float, float] = (xy_golden_ratio * hist_scale, 1 * hist_scale)
+hist2_figsize: Tuple[float, float] = (2 * xy_golden_ratio * hist_scale, 1 * hist_scale)
+
+# tracking plot
+tracking_figsize: Tuple[float, float] = (10, 5)
 
 # Scale of matplotlib figures with subplots
-# Size of figures with subplots is defined as
-# (scale * ncols * xy_ratio[0], scale * nrows * xy_ratio[1])
 scale: int = 3
 
 # 2D histogram

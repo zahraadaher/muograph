@@ -1,13 +1,23 @@
 import torch
 from torch import Tensor
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Union
 import math
 import matplotlib.pyplot as plt
 import matplotlib
+import seaborn as sns
+import pandas as pd
+import numpy as np
 
 from muograph.utils.save import AbsSave
 from muograph.hits.hits import Hits
-from muograph.plotting.params import n_bins, alpha, font, titlesize, hist_figsize, labelsize
+from muograph.volume.volume import Volume
+from muograph.plotting.params import n_bins, font, alpha_sns, titlesize, hist_figsize, hist2_figsize, labelsize, tracking_figsize
+from muograph.utils.device import DEVICE
+
+r"""
+Provides class for converting muon hits of the `Hits` class into
+muon tracks usable for image reconstruction purposes.
+"""
 
 
 class Tracking(AbsSave):
@@ -37,11 +47,11 @@ class Tracking(AbsSave):
     _angular_res: Optional[float] = None
     _E: Optional[Tensor] = None  # (mu)
     _tracks_eff: Optional[Tensor] = None  # (mu)
-
     _vars_to_save = [
         "tracks",
         "points",
         "angular_res",
+        "angular_error",
         "E",
         "label",
         "measurement_type",
@@ -54,35 +64,33 @@ class Tracking(AbsSave):
         hits: Optional[Hits] = None,
         output_dir: Optional[str] = None,
         tracks_hdf5: Optional[str] = None,
+        tracks_df: Optional[pd.DataFrame] = None,
         measurement_type: Optional[str] = None,
-        compute_angular_res: bool = False,
     ) -> None:
         r"""
         Initializes the Tracking object.
 
-        The instantiation can be done in two ways:
+        The instantiation can be done in three ways:
         - By providing `hits`: Computes tracks and saves them as HDF5 files in `output_dir`.
         - By providing `tracks_hdf5`: Loads tracking features from the specified HDF5 file.
+        - By providing `tracks_df`: Loads tracking features from the specified Pandas DataFrame.
+
 
         Args:
             label (str): The position of the hits relative to the passive volume ('above' or 'below').
             hits (Optional[Hits]): An instance of the Hits class, required if `tracks_hdf5` is not provided.
-            output_dir (Optional[str]): Directory to save Tracking attributes if `save` is True.
+            output_dir (Optional[str]): Directory to save Tracking attributes.
             tracks_hdf5 (Optional[str]): Path to an HDF5 file with previously saved Tracking data.
+            tracks_df (Optional[pd.DataFrame]): Pandas DataFrame with previously saved Tracking data.
             measurement_type (Optional[str]): Type of measurement campaign, either 'absorption' or 'freesky'.
-            save (bool): If True, saves attributes to `output_dir`. Default is False.
-            compute_angular_res (bool): If True, computes angular resolution. Default is False.
         """
-
-        self._compute_angular_res = compute_angular_res
 
         self._label = self._validate_label(label)
         self._measurement_type = self._validate_measurement_type(measurement_type)
-        self._compute_angular_res = compute_angular_res
 
         super().__init__(output_dir=output_dir)
 
-        if (hits is not None) & (tracks_hdf5 is None):
+        if (hits is not None) & (tracks_hdf5 is None) & (tracks_df is None):
             self.hits = hits
 
             if self.output_dir is not None:
@@ -93,7 +101,20 @@ class Tracking(AbsSave):
                     filename=filename,
                 )
         elif tracks_hdf5 is not None:
+            self.hits = None
             self.load_attr(attributes=self._vars_to_save, filename=tracks_hdf5)
+
+        elif tracks_df is not None:
+            self.hits = None
+            self.load_from_df(df=tracks_df)
+
+    def __repr__(self) -> str:
+        description = f"Collection of tracks from {self.n_mu:,d} muons "
+        if self.angular_res == 0.0:
+            description += "\n with perfect angular resolution."
+        else:
+            description += f"\n with angular resolution = {self.angular_res*180/math.pi:.2f} deg"
+        return description
 
     @staticmethod
     def _validate_label(label: str) -> str:
@@ -116,7 +137,7 @@ class Tracking(AbsSave):
 
         Args:
             - hits (Tensor): The hits data with shape (3, n_plane, mu).
-            - chunk_size (int): Size of chunks for processing in case mu is very large.
+            - chunk_size (int): Size of chunks for processing in case n_mu is very large.
 
         Returns:
             - tracks, points (Tuple[Tensor, Tensor]): The points and tracks tensors
@@ -202,6 +223,56 @@ class Tracking(AbsSave):
         tracks_eff = torch.where(hits_eff.sum(dim=0) == 3, 1, 0)
         return tracks_eff
 
+    @staticmethod
+    def tracks_points_to_df(tracks: Tensor, points: Tensor, E: Tensor, angular_error: Tensor) -> pd.DataFrame:
+        """
+        Convert tracks and points into a pandas DataFrame.
+
+        Args:
+            tracks (Tensor): Tensor of shape (n_mu, 3), with track information as px, py, pz.
+            points (Tensor): Tensor of shape (n_mu, 3), with point information as x, y, z.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns ["x", "y", "z", "px", "py", "pz", "E"].
+        """
+        # Ensure the tensors have the correct shape
+        assert tracks.size(1) == 3 and points.size(1) == 3, "Input tensors must have shape (n_mu, 3)"
+        assert tracks.size(0) == points.size(0), "Tracks and points must have the same number of rows"
+
+        # Convert tensors to numpy arrays and create the DataFrame
+        data = {
+            "x": points[:, 0].detach().cpu().numpy(),
+            "y": points[:, 1].detach().cpu().numpy(),
+            "z": points[:, 2].detach().cpu().numpy(),
+            "px": tracks[:, 0].detach().cpu().numpy(),
+            "py": tracks[:, 1].detach().cpu().numpy(),
+            "pz": tracks[:, 2].detach().cpu().numpy(),
+            "E": E.detach().cpu().numpy(),
+            "angular_error": angular_error.detach().cpu().numpy(),
+        }
+        return pd.DataFrame(data)
+
+    def load_from_df(self, df: pd.DataFrame) -> None:
+        """
+        Load tracks and points from a pandas DataFrame into PyTorch tensors.
+
+        Args:
+            df (pd.DataFrame): A DataFrame with columns ["x", "y", "z", "px", "py", "pz"].
+
+        Sets:
+            self.tracks: Tensor of shape (n_mu, 3) with columns ["px", "py", "pz"].
+            self.points: Tensor of shape (n_mu, 3) with columns ["x", "y", "z"].
+        """
+        # Validate DataFrame columns
+        required_columns = ["x", "y", "z", "px", "py", "pz"]
+        assert all(col in df.columns for col in required_columns), f"DataFrame must contain columns {required_columns}"
+
+        # Convert DataFrame columns to PyTorch tensors
+        self.tracks = torch.tensor(df[["px", "py", "pz"]].values, dtype=torch.float32, device=DEVICE)
+        self.points = torch.tensor(df[["x", "y", "z"]].values, dtype=torch.float32, device=DEVICE)
+        self.E = torch.tensor(df[["E"]].values, dtype=torch.float32, device=DEVICE)
+        self.angular_error = torch.tensor(df["angular_error"].values, dtype=torch.float32, device=DEVICE)
+
     def get_angular_error(self, reco_theta: Tensor) -> Tensor:
         r"""
         Compute the angular error between the generated and reconstructed tracks.
@@ -219,131 +290,270 @@ class Tracking(AbsSave):
     def plot_muon_features(
         self,
         figname: Optional[str] = None,
-        dir: Optional[str] = None,
-        save: bool = True,
     ) -> None:
         r"""
-        Plot the zenith angle and energy of the reconstructed tracks.
+        Plot the zenith angle and energy of the reconstructed tracks using Seaborn for improved visualization.
         Args:
             figname (Tensor): If provided, save the figure at self.output / figname.
         """
 
-        # Set default figname
-        if figname is None:
-            figname = "tracks_theta_E_" + self.label
+        # Extract data
+        zenith_angle_deg = self.theta.detach().cpu().numpy() * 180 / math.pi
+        energy_gev = self.E.detach().cpu().numpy() / 1000
+        zenith_mean = zenith_angle_deg.mean()
+        energy_mean = energy_gev.mean()
 
-        # Set default output directory
-        if dir is None:
-            dir = str(self.output_dir) + "/"
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
 
-        # Set default font
+        # Apply font globally using Matplotlib
+        import matplotlib
+
         matplotlib.rc("font", **font)
 
-        fig, axs = plt.subplots(ncols=2, figsize=(2 * hist_figsize[0], hist_figsize[1]))
+        # Create subplots
+        fig, axs = plt.subplots(ncols=2, figsize=hist2_figsize)
+        fig.suptitle(f"Batch of {self.n_mu:,d} muons", fontsize=titlesize, fontweight="bold")
 
-        # Fig title
-        fig.suptitle(
-            f"Batch of {self.tracks.size()[0]} muons",
-            fontsize=titlesize,
-            fontweight="bold",
+        # Zenith angle plot
+        sns.histplot(
+            zenith_angle_deg,
+            bins=n_bins,
+            # kde=True,
+            color="blue",
+            alpha=alpha_sns,
+            ax=axs[0],
         )
+        axs[0].axvline(zenith_mean, color="red", linestyle="--", linewidth=1.5, label=f"Mean = {zenith_mean:.2f}°")
+        axs[0].set_xlabel(r"Zenith Angle $\theta$ [deg]", fontweight="bold")
+        axs[0].set_ylabel("Frequency [a.u]", fontweight="bold")
+        axs[0].legend(fontsize=font["size"])
 
-        # Zenith angle
-        axs[0].hist(self.theta.detach().cpu().numpy() * 180 / math.pi, bins=n_bins, alpha=alpha)
-        axs[0].axvline(
-            x=self.theta.mean().detach().cpu().numpy() * 180 / math.pi,
-            label=f"mean = {self.theta.mean().detach().cpu().numpy() * 180 / math.pi:.1f}",
-            color="red",
-        )
-        axs[0].set_xlabel(r" Zenith angle $\theta$ [deg]", fontweight="bold")
+        # Energy plot
+        sns.histplot(energy_gev, bins=n_bins, color="purple", log_scale=(False, True), alpha=alpha_sns, ax=axs[1])
 
-        # Energy
-        axs[1].hist(self.E.detach().cpu().numpy(), bins=n_bins, alpha=alpha, log=True)
-        axs[1].axvline(
-            x=self.E.mean().detach().cpu().numpy(),
-            label=f"mean = {self.E.mean().detach().cpu().numpy():.3E}",
-            color="red",
-        )
-        axs[1].set_xlabel(r" Energy [MeV]", fontweight="bold")
+        axs[1].axvline(energy_mean, color="red", linestyle="--", linewidth=1.5, label=f"Mean = {energy_mean:.2f} GeV")
+        axs[1].set_xlabel("Energy [GeV]", fontweight="bold")
+        axs[1].set_ylabel("Frequency [a.u]", fontweight="bold")
+        axs[1].legend(fontsize=font["size"])
 
-        for ax in axs:
-            ax.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
-            ax.tick_params(axis="both", labelsize=labelsize)
-            ax.set_ylabel("Frequency [a.u]", fontweight="bold")
-            ax.legend()
+        # Adjust layout
         plt.tight_layout()
 
-        if save:
-            plt.savefig(dir + figname, bbox_inches="tight")
-
+        # Save the plot if required
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
         plt.show()
 
     def plot_angular_error(
         self,
         figname: Optional[str] = None,
-        dir: Optional[str] = None,
-        save: bool = True,
     ) -> None:
-        """Plot the angular error of the tracks.
+        """Plot the angular error of the tracks using Seaborn for improved visualization.
 
         Args:
-            filename (Optional[str], optional): Path to a file where to save the figure. Defaults to None.
+            figname (Optional[str], optional): Path to a file where to save the figure. Defaults to None.
         """
+        # Extract data
+        angular_error_deg = self.angular_error.detach().cpu().numpy() * 180 / math.pi
+        mean = angular_error_deg.mean()
+        std = angular_error_deg.std()
 
-        # Set default figname
-        if figname is None:
-            figname = "tracks_angular_error_" + self.label
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
 
-        # Set default output directory
-        if dir is None:
-            dir = str(self.output_dir) + "/"
+        # Apply font globally using Matplotlib
+        import matplotlib
 
-        # Set default font
         matplotlib.rc("font", **font)
 
-        fig, ax = plt.subplots(figsize=(hist_figsize))
+        # Create the plot
+        plt.figure(figsize=hist_figsize)
+        sns.histplot(
+            angular_error_deg,
+            bins=n_bins,
+            color="blue",
+            alpha=alpha_sns,
+        )
 
-        # Fig title
+        # Add mean line
+        plt.axvline(mean, color="red", linestyle="--", linewidth=1.5, label=f"Mean = {mean:.2f}°")
+
+        # Add ±1σ region
+        plt.axvline(mean - std, color="green", linestyle=":", linewidth=1.5)
+        plt.axvline(mean + std, color="green", linestyle=":", linewidth=1.5, label=r"$\pm 1\sigma$")
+
+        # Add labels, title, and legend
+        plt.title(f"Batch of {self.n_mu:,d} muons\nAngular Resolution = {std:.3f}°", fontsize=titlesize, fontweight="bold")
+        plt.xlabel(r"Angular Error $\delta\theta$ [deg]", fontweight="bold")
+        plt.ylabel("Frequency [a.u.]", fontweight="bold")
+        plt.legend(fontsize=font["size"])
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Save the plot if required
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
+        plt.show()
+
+    def plot_tracking_event(self, event: int, proj: str = "XZ", hits: Optional[Hits] = None, figname: Optional[str] = None) -> None:
+        import matplotlib
+
+        matplotlib.rc("font", **font)
+
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
+
+        dim_map = {
+            "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]", "proj": "XZ"},
+            "YZ": {"x": 1, "y": 2, "xlabel": r"$y$ [mm]", "ylabel": r"$z$ [mm]", "proj": "YZ"},
+        }
+
+        fig, axs = plt.subplots(ncols=2, figsize=tracking_figsize)
         fig.suptitle(
-            f"Batch of {self.tracks.size()[0]} muons\nAngular resolution = {self.angular_error.std().detach().cpu().numpy() * 180 / math.pi:.2f} deg",
-            fontsize=titlesize,
+            f"Tracking of event {event:,d}" + "\n" + f"{dim_map[proj]['proj']} projection, " + r"$\theta$ = " + f"{self.theta[event] * 180 / math.pi:.2f} deg",
             fontweight="bold",
         )
 
-        # Projected zenith angle error
-        ax.hist(
-            self.angular_error.detach().cpu().numpy() * 180 / math.pi,
-            bins=n_bins,
-            alpha=alpha,
+        if (self.hits is None) & (hits is None):
+            raise ValueError("Provide hits as argument.")
+
+        elif self.hits is not None:
+            # Get data as numpy array
+            reco_hits_np = self.hits.reco_hits.detach().cpu().numpy()
+            gen_hits_np = self.hits.gen_hits.detach().cpu().numpy()
+
+        elif hits is not None:
+            # Get data as numpy array
+            reco_hits_np = hits.reco_hits.detach().cpu().numpy()
+            gen_hits_np = hits.gen_hits.detach().cpu().numpy()
+
+        points_np = self.points.detach().cpu().numpy()
+        tracks_np = self.tracks.detach().cpu().numpy()
+
+        hits_x = reco_hits_np[dim_map[proj]["x"], :, event]  # type: ignore
+
+        # Get detector span
+        x_span = abs(np.min(reco_hits_np[dim_map[proj]["x"]]) - np.max(reco_hits_np[dim_map[proj]["x"]]))  # type: ignore
+        y_span = abs(np.min(reco_hits_np[dim_map[proj]["y"]]) - np.max(reco_hits_np[dim_map[proj]["y"]]))  # type: ignore
+
+        # Assumes x_span > y_span
+        hits_x_span = abs(np.min(hits_x) - np.max(hits_x))
+        x_span = max(hits_x_span, y_span)
+
+        # Set axis limits
+        axs[0].set_xlim(
+            (
+                points_np[event, dim_map[proj]["x"]] - x_span / 2,  # type: ignore
+                points_np[event, dim_map[proj]["x"]] + x_span / 2,  # type: ignore
+            )
+        )
+        for ax in axs:
+            ax.set_ylim(
+                (
+                    points_np[event, dim_map[proj]["y"]] - y_span / 1.8,  # type: ignore
+                    points_np[event, dim_map[proj]["y"]] + y_span / 1.8,  # type: ignore
+                )
+            )
+
+        axs[1].set_xlim(
+            (
+                points_np[event, dim_map[proj]["x"]] - abs(np.min(hits_x) - np.max(hits_x)) / 1.5,  # type: ignore
+                points_np[event, dim_map[proj]["x"]] + abs(np.min(hits_x) - np.max(hits_x)) / 1.5,  # type: ignore
+            )
         )
 
-        # Mean angular error
-        ax.axvline(
-            x=self.angular_error.mean().detach().cpu().numpy() * 180 / math.pi,
-            label=f"mean = {self.angular_error.mean().detach().cpu().numpy() * 180 / math.pi:.1f}",
-            color="red",
-        )
+        # Plot detector panels if XZ or YZ projection
+        for ax in axs:
+            for i in range(self.hits.n_panels):
+                label = "Detector panel" if i == 0 else None
+                ax.axhline(y=np.mean(reco_hits_np[dim_map[proj]["y"], i]), label=label, alpha=0.4)  # type: ignore
 
-        # Highlight 1 sigma region
-        std = self.angular_error.std().detach().cpu().numpy() * 180 / math.pi
-        mean = self.angular_error.mean().detach().cpu().numpy() * 180 / math.pi
+        for ax in axs:
+            # Plot reco hits
+            ax.scatter(
+                x=reco_hits_np[dim_map[proj]["x"], :, event],  # type: ignore
+                y=reco_hits_np[dim_map[proj]["y"], :, event],  # type: ignore
+                label="Reco. hits",
+                color="red",
+                marker="+",
+                alpha=0.5,
+                s=80,
+            )
 
-        ax.axvline(x=mean - std, color="green")
-        ax.axvline(x=mean + std, color="green", label=r"$\pm 1 \sigma$")
+            # Plot gen hits
+            ax.scatter(
+                x=gen_hits_np[dim_map[proj]["x"], :, event],  # type: ignore
+                y=gen_hits_np[dim_map[proj]["y"], :, event],  # type: ignore
+                label="Gen. hits",
+                color="green",
+                marker="+",
+                alpha=0.5,
+            )
 
-        # Grid
-        ax.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
+            # Plot fitted point
+            ax.scatter(
+                x=points_np[event, dim_map[proj]["x"]],  # type: ignore
+                y=points_np[event, dim_map[proj]["y"]],  # type: ignore
+                label="Fitted point",
+                color="red",
+                marker="x",
+                s=100,
+            )
 
-        # Axis labels
-        ax.set_ylabel("Frequency [a.u]", fontweight="bold")
-        ax.set_xlabel(r" Angular error $\delta\theta$ [deg]", fontweight="bold")
-        ax.tick_params(axis="both", labelsize=labelsize)
+            ax.set_xlabel(dim_map[proj]["xlabel"], fontweight="bold")
+            ax.set_ylabel(dim_map[proj]["ylabel"], fontweight="bold")
 
-        ax.legend()
+            ax.plot(
+                [
+                    points_np[event, dim_map[proj]["x"]] - tracks_np[event, dim_map[proj]["x"]] * 1000,  # type: ignore
+                    points_np[event, dim_map[proj]["x"]] + tracks_np[event, dim_map[proj]["x"]] * 1000,  # type: ignore
+                ],
+                [
+                    points_np[event, dim_map[proj]["y"]] - tracks_np[event, dim_map[proj]["y"]] * 1000,  # type: ignore
+                    points_np[event, dim_map[proj]["y"]] + tracks_np[event, dim_map[proj]["y"]] * 1000,  # type: ignore
+                ],
+                alpha=0.4,
+                color="red",
+                linestyle="--",
+                label="Fitted track",
+            )
+
+        axs[0].set_aspect("equal")
+
         plt.tight_layout()
+        axs[0].legend(loc="center right", bbox_to_anchor=(0.25, 1.2))
 
-        if save:
-            plt.savefig(dir + figname, bbox_inches="tight")
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
         plt.show()
 
     def _reset_vars(self) -> None:
@@ -371,6 +581,13 @@ class Tracking(AbsSave):
             if isinstance(data, Tensor):
                 if data.size()[0] == n_muons:
                     setattr(self, var, data[mask])
+
+    @property
+    def df(self) -> pd.DataFrame:
+        r"""
+        DataFrame containing tracks, points and energy data.
+        """
+        return self.tracks_points_to_df(tracks=self.tracks, points=self.points, E=self.E, angular_error=self.angular_error)
 
     @property
     def tracks(self) -> Tensor:
@@ -404,12 +621,23 @@ class Tracking(AbsSave):
         The tracks efficiency.
         """
         if self._tracks_eff is None:
-            self._tracks_eff = self.get_tracks_eff_from_hits_eff(self.hits.hits_eff)  # type: ignore
+            if self.hits is not None:
+                self._tracks_eff = self.get_tracks_eff_from_hits_eff(self.hits.hits_eff)  # type: ignore
+            else:
+                self._tracks_eff = torch.ones_like(self.theta)
         return self._tracks_eff
 
     @tracks_eff.setter
     def tracks_eff(self, value: Tensor) -> None:
         self._tracks_eff = value
+
+    @property
+    def tracking_eff(self) -> float:
+        r"""
+        The tracking efficiecny, defined as the number of triggered events
+        divided by the total number of events.
+        """
+        return self.tracks_eff.sum().detach().cpu().item() / self.n_mu
 
     @property
     def theta_xy(self) -> Tensor:
@@ -454,11 +682,15 @@ class Tracking(AbsSave):
         The angular error between the generated and reconstructed tracks.
         """
         if self._angular_error is None:
-            if (self.hits.spatial_res is None) | (self._compute_angular_res is False):  # type: ignore
+            if self.hits.spatial_res.sum() == 0.0:
                 self._angular_error = torch.zeros_like(self.theta)
             else:
                 self._angular_error = self.get_angular_error(self.theta)
         return self._angular_error
+
+    @angular_error.setter
+    def angular_error(self, value: Tensor) -> None:
+        self._angular_error = value
 
     @property
     def angular_res(self) -> float:
@@ -467,10 +699,7 @@ class Tracking(AbsSave):
         angular error distribution.
         """
         if self._angular_res is None:
-            if self._compute_angular_res:
-                self._angular_res = self.angular_error.std().item()
-            else:
-                self._angular_res = 0.0
+            self._angular_res = self.angular_error.std().item()
         return self._angular_res
 
     @angular_res.setter
@@ -506,46 +735,50 @@ class TrackingMST(AbsSave):
     _dtheta: Optional[Tensor] = None  # (mu)
     _muon_eff: Optional[Tensor] = None  # (mu)
 
-    _vars_to_load = ["tracks", "points", "angular_res", "E", "tracks_eff"]
+    _vars_to_load = ["tracks", "points", "angular_res", "E", "tracks_eff", "hits"]
 
     def __init__(
         self,
-        tracking_files: Optional[Tuple[str, str]] = None,
         trackings: Optional[Tuple[Tracking, Tracking]] = None,
         output_dir: Optional[str] = None,
     ) -> None:
         r"""
-        Initializes the TrackingMST object with either 2 instances of the Tracking class
-        (with tags 'above' and 'below') or with hdf5 files where Tracking attributes where saved.
+        Initializes the TrackingMST object with 2 instances of the Tracking class
+        (with tags 'above' and 'below').
 
         Args:
-            - tracking_files (Optional[Tuple[str, str]]): path to hdf5 files
-            where Tracking class attributes are saved
             - trackings (Optional[Tuple[Tracking, Tracking]]): instances of the Tracking class
             for the incoming muon tracks (Tracking.label = 'above') and outgoing tracks
             (Tracking.label = 'below')
             - output_dir (Optional[str]): Path to a directory where to save TrackingMST attributes
             in a hdf5 file.
-            - save (bool): If True,
         """
         super().__init__(output_dir=output_dir)
 
-        if tracking_files is None and trackings is None:
-            raise ValueError("Provide either a list of tracking files or a list of Tracking instances.")
-
-        # Load data from tracking hdf5 files
-        elif trackings is None and tracking_files is not None:
-            for tracking_file, tag in zip(tracking_files, ["_in", "_out"]):
-                self.load_attr(self._vars_to_load, tracking_file, tag=tag)
-
         # Load data from Tracking instances
-        elif trackings is not None and tracking_files is None:
+        if trackings is not None:
             for tracking, tag in zip(trackings, ["_in", "_out"]):
                 self.load_attr_from_tracking(tracking, tag)
+        else:
+            raise ValueError("Provide instance of Tracking class with label `above` and `below`.")
 
         # Filter muon event due to detector efficiency
-        print(f"{(self.muon_eff==False).sum()} muon removed due to detector efficiency")
+        self.n_mu_removed = (self.n_mu - self.muon_eff.sum()).detach().cpu().item()
+        self._tracking_eff = 1 - (self.n_mu_removed / self.n_mu)
         self._filter_muons(self.muon_eff)
+
+    def __repr__(self) -> str:
+        description = f"Collection of tracks from {self.n_mu:,d} muons "
+        if (self.angular_res_in == 0.0) & (self.angular_res_out == 0.0):
+            description += "\n with perfect angular resolution."
+        else:
+            average_res_deg = (self.angular_res_in + self.angular_res_out) * 180 / (2 * math.pi)
+            description += f"\n with average angular resolution = {average_res_deg:.2f} deg"
+        if self.tracking_eff < 1.0:
+            description += f"\n with tracking efficiency = {self.tracking_eff * 100:.2f} %"
+        else:
+            description += "\n with perfect tracking efficiency"
+        return description
 
     def load_attr_from_tracking(self, tracking: Tracking, tag: str) -> None:
         r"""
@@ -622,6 +855,8 @@ class TrackingMST(AbsSave):
             if isinstance(data, Tensor):
                 if data.size()[0] == n_muons:
                     setattr(self, var, data[mask])
+            elif isinstance(data, Hits):
+                data._filter_events(mask=mask)
 
     def _reset_vars(self) -> None:
         r"""
@@ -637,70 +872,78 @@ class TrackingMST(AbsSave):
     def plot_muon_features(
         self,
         figname: Optional[str] = None,
-        dir: Optional[str] = None,
-        save: bool = True,
     ) -> None:
         r"""
         Plot the zenith angle and energy of the reconstructed tracks.
         Args:
-            figname (str): If provided, save the figure at self.output / figname.
+            figname (str): If provided, save the figure at figname.
         """
-        # Set default figname
-        if figname is None:
-            figname = "tracks_theta_E_dtheta"
 
-        # Set default output directory
-        if dir is None:
-            dir = str(self.output_dir) + "/"
-
-        # Set default font
         matplotlib.rc("font", **font)
+
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
 
         fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(2 * hist_figsize[0], 2 * hist_figsize[1]))
         axs = axs.ravel()
 
         # Fig title
-        fig.suptitle(f"Batch of {self.n_mu} muons", fontsize=titlesize, fontweight="bold")
+        fig.suptitle(f"Batch of {self.n_mu:,d} muons", fontsize=titlesize, fontweight="bold")
 
         # Zenith angle
-        axs[0].hist(
-            self.theta_in.detach().cpu().numpy() * 180 / math.pi,
-            bins=n_bins,
-            alpha=alpha,
-        )
+        sns.histplot(data=self.theta_in.detach().cpu().detach().numpy() * 180 / math.pi, alpha=alpha_sns, bins=n_bins, ax=axs[0], color="blue")
+
         axs[0].axvline(
             x=self.theta_in.mean().detach().cpu().numpy() * 180 / math.pi,
-            label=f"mean = {self.theta_in.mean().detach().cpu().numpy() * 180 / math.pi:.1f}",
+            label=f"mean = {self.theta_in.mean().detach().cpu().numpy() * 180 / math.pi:.1f} deg",
             color="red",
         )
         axs[0].set_xlabel(r" Zenith angle $\theta$ [deg]", fontweight="bold")
 
         # Energy
-        axs[1].hist(self.E.detach().cpu().numpy(), bins=n_bins, alpha=alpha, log=True)
+        sns.histplot(
+            data=self.E.detach().cpu().detach().numpy() / 1000,
+            alpha=alpha_sns,
+            bins=n_bins,
+            ax=axs[1],
+            log_scale=(False, True),
+            color="purple",
+        )
         axs[1].axvline(
-            x=self.E.mean().detach().cpu().numpy(),
-            label=f"mean = {self.E.mean().detach().cpu().numpy():.3E}",
+            x=self.E.mean().detach().cpu().numpy() / 1000,
+            label=f"mean = {self.E.mean().detach().cpu().numpy() / 1000:.2f} GeV",
             color="red",
         )
-        axs[1].set_xlabel(r" Energy [MeV]", fontweight="bold")
+        axs[1].set_xlabel(r" Energy [GeV]", fontweight="bold")
 
         # Scattering angle
-        axs[2].hist(
-            self.dtheta.detach().cpu().numpy() * 180 / math.pi,
+        sns.histplot(
+            data=self.dtheta.detach().cpu().detach().numpy() * 180 / math.pi,
+            alpha=alpha_sns,
             bins=n_bins,
-            alpha=alpha,
-            log=True,
+            ax=axs[2],
+            log_scale=(False, True),
+            color="green",
         )
         axs[2].axvline(
             x=self.dtheta.mean().detach().cpu().numpy() * 180 / math.pi,
-            label=f"mean = {self.dtheta.mean().detach().cpu().numpy() * 180 / math.pi:.3E}",
+            label=f"mean = {self.dtheta.mean().detach().cpu().numpy() * 180 / math.pi:.3f} deg",
             color="red",
         )
-        axs[2].set_xlabel(r" Scattering angle $\delta\theta$ [deg]", fontweight="bold")
+        axs[2].set_xlabel(r" Scattering angle $\delta\theta$ [deg]", fontweight="bold", fontsize=font["size"])
 
         for ax in axs[:-1]:
             ax.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
-            ax.set_ylabel("Frequency [a.u]", fontweight="bold")
+            ax.set_ylabel("Frequency [a.u]", fontweight="bold", fontsize=font["size"])
             ax.tick_params(axis="both", labelsize=labelsize)
             ax.legend()
 
@@ -709,9 +952,131 @@ class TrackingMST(AbsSave):
 
         plt.tight_layout()
 
-        if save:
-            plt.savefig(dir + figname, bbox_inches="tight")
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
 
+        plt.show()
+
+    @staticmethod
+    def plot_voi(
+        voi: Volume,
+        ax: matplotlib.axes._axes.Axes,
+        dim_xy: Tuple[int, int],
+    ) -> None:
+        from matplotlib.patches import Rectangle
+
+        ax.add_patch(
+            Rectangle(
+                xy=(
+                    voi.xyz_min[dim_xy[0]].detach().cpu().numpy(),
+                    voi.xyz_min[dim_xy[1]].detach().cpu().numpy(),
+                ),
+                width=voi.dxyz[dim_xy[0]].detach().cpu().numpy(),
+                height=voi.dxyz[dim_xy[1]].detach().cpu().numpy(),
+                fill=True,
+                edgecolor="black",
+                facecolor="blue",
+                alpha=0.3,
+                label="VOI",
+            )
+        )
+
+    @staticmethod
+    def plot_point(
+        ax: matplotlib.axes._axes.Axes,
+        point: np.ndarray,
+        dim_xy: Tuple[int, int],
+        color: str,
+        label: str,
+        size: int = 100,
+    ) -> None:
+        ax.scatter(x=point[dim_xy[0]], y=point[dim_xy[1]], label=f"Fitted point {label}", color=color, marker="x", s=size)
+
+    def plot_tracking_event(
+        self,
+        event: int,
+        proj: str = "XZ",
+        voi: Optional[Volume] = None,
+        figname: Optional[str] = None,
+    ) -> None:
+        import matplotlib
+
+        matplotlib.rc("font", **font)
+
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
+
+        dim_map: Dict[str, Dict[str, Union[str, int]]] = {
+            "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]", "proj": "XZ"},
+            "YZ": {"x": 1, "y": 2, "xlabel": r"$y$ [mm]", "ylabel": r"$z$ [mm]", "proj": "YZ"},
+        }
+
+        dim_xy = (int(dim_map[proj]["x"]), int(dim_map[proj]["y"]))
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        fig.suptitle(
+            f"Tracking of event {event:,d}"
+            + "\n"
+            + f"{dim_map[proj]['proj']} projection, "
+            + r"$\delta\theta$ = "
+            + f"{self.dtheta[event] * 180 / math.pi:.2f} deg",
+            fontweight="bold",
+        )
+
+        points_in_np = self.points_in.detach().cpu().numpy()
+        points_out_np = self.points_out.detach().cpu().numpy()
+        track_in_np = self.tracks_in.detach().cpu().numpy()[event]
+        track_out_no = self.tracks_out.detach().cpu().numpy()[event]
+
+        # Get plot xy span
+        y_span = np.abs(points_in_np[event, 2] - points_out_np[event, 2])
+
+        # Get x min max
+        x_min = min(np.min(points_in_np[:, dim_map[proj]["x"]]), np.min(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
+        x_max = max(np.max(points_in_np[:, dim_map[proj]["x"]]), np.max(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
+
+        # Set plot x span
+        ax.set_xlim(xmin=x_min, xmax=x_max)
+
+        # Plot fitted point
+        for point, label, color in zip((points_in_np, points_out_np), ("in", "out"), ("red", "green")):
+            self.plot_point(ax=ax, point=point[event], dim_xy=dim_xy, color=color, label=label)
+        # plot fitted track
+        for point, track, label, pm, color in zip(
+            (points_in_np[event], points_out_np[event]), (track_in_np, track_out_no), ("in", "out"), (1, -1), ("red", "green")
+        ):
+            ax.plot(
+                [point[dim_map[proj]["x"]], point[dim_map[proj]["x"]] + track[dim_map[proj]["x"]] * y_span * pm],  # type: ignore
+                [point[dim_map[proj]["y"]], point[dim_map[proj]["y"]] + track[dim_map[proj]["y"]] * y_span * pm],  # type: ignore
+                alpha=0.4,
+                color=color,
+                linestyle="--",
+                label=f"Fitted track {label}",
+            )
+        # Plot volume of interest (if provided)
+        if voi is not None:
+            self.plot_voi(voi=voi, ax=ax, dim_xy=dim_xy)  # type: ignore
+
+        plt.tight_layout()
+
+        ax.legend(
+            bbox_to_anchor=(1.0, 0.7),
+        )
+        ax.set_aspect("equal")
+        ax.set_xlabel(f"{dim_map[proj]['xlabel']}", fontweight="bold")
+        ax.set_ylabel(f"{dim_map[proj]['ylabel']}", fontweight="bold")
+
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
         plt.show()
 
     # Number of muons
@@ -719,6 +1084,23 @@ class TrackingMST(AbsSave):
     def n_mu(self) -> int:
         """The number of muons."""
         return self.dtheta.size()[0]
+
+    # Hits
+    @property
+    def hits_in(self) -> Hits:
+        return self._hits_in
+
+    @hits_in.setter
+    def hits_in(self, value: Hits) -> None:
+        self._hits_in = value
+
+    @property
+    def hits_out(self) -> Hits:
+        return self._hits_out
+
+    @hits_out.setter
+    def hits_out(self, value: Hits) -> None:
+        self._hits_out = value
 
     # Energy
     @property
@@ -782,6 +1164,10 @@ class TrackingMST(AbsSave):
         if self._muon_eff is None:
             self._muon_eff = self.get_muon_eff(self.tracks_eff_in, self.tracks_eff_out)
         return self._muon_eff
+
+    @property
+    def tracking_eff(self) -> float:
+        return self._tracking_eff
 
     # Points
     @property

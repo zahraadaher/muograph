@@ -275,3 +275,37 @@ def get_n_bins_xy_from_xy_span(dx: float, dy: float, n_bins: int = n_bins_2D) ->
         pixel_size = round(dy / n_bins)
 
     return nx, ny, pixel_size
+
+
+def plot_hist(data_1D: Tensor, xlabel: Optional[str] = None, logx: bool = False, logy: bool = False, figname: Optional[str] = None) -> None:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from muograph.plotting.params import font
+
+    import matplotlib
+
+    matplotlib.rc("font", **font)
+
+    sns.set_theme(
+        style="darkgrid",
+        rc={
+            "font.family": font["family"],
+            "font.size": font["size"],
+            "axes.labelsize": font["size"],  # Axis label font size
+            "axes.titlesize": font["size"],  # Axis title font size
+            "xtick.labelsize": font["size"],  # X-axis tick font size
+            "ytick.labelsize": font["size"],  # Y-axis tick font size
+        },
+    )
+
+    fig, ax = plt.subplots()
+    sns.histplot(data=data_1D.detach().cpu().detach().numpy(), alpha=0.4, bins=50, ax=ax, log_scale=(logx, logy), color="blue")
+
+    xlabel = "x" if xlabel is None else xlabel
+    ax.set_xlabel(xlabel, fontweight="bold", fontsize=font["size"])
+    ax.set_ylabel("frequency [a.u]", fontweight="bold", fontsize=font["size"])
+
+    if figname is not None:
+        plt.savefig(figname, bbox_inches="tight")
+
+    plt.show()
