@@ -77,7 +77,7 @@ def get_tracking_mst(hits_file: str, output_dir: Optional[str] = None) -> Tracki
     tracks_in = Tracking(label="above", hits=hits_in, output_dir=output_dir)
     tracks_out = Tracking(label="below", hits=hits_out, output_dir=output_dir)
 
-    return TrackingMST(trackings=(tracks_in, tracks_out), output_dir=output_dir)
+    return TrackingMST(trackings=(tracks_in, tracks_out))
 
 
 def test_efficiency() -> None:

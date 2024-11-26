@@ -271,7 +271,8 @@ class Tracking(AbsSave):
         self.tracks = torch.tensor(df[["px", "py", "pz"]].values, dtype=torch.float32, device=DEVICE)
         self.points = torch.tensor(df[["x", "y", "z"]].values, dtype=torch.float32, device=DEVICE)
         self.E = torch.tensor(df[["E"]].values, dtype=torch.float32, device=DEVICE)
-        self.angular_error = torch.tensor(df["angular_error"].values, dtype=torch.float32, device=DEVICE)
+        if "angular_error" in df.keys():
+            self.angular_error = torch.tensor(df["angular_error"].values, dtype=torch.float32, device=DEVICE)
 
     def get_angular_error(self, reco_theta: Tensor) -> Tensor:
         r"""
@@ -294,7 +295,7 @@ class Tracking(AbsSave):
         r"""
         Plot the zenith angle and energy of the reconstructed tracks using Seaborn for improved visualization.
         Args:
-            figname (Tensor): If provided, save the figure at self.output / figname.
+            figname (Tensor): If provided, save the figure as `figname`.
         """
 
         # Extract data
@@ -358,7 +359,7 @@ class Tracking(AbsSave):
         self,
         figname: Optional[str] = None,
     ) -> None:
-        """Plot the angular error of the tracks using Seaborn for improved visualization.
+        """Plot the angular error of the tracks using Seaborn.
 
         Args:
             figname (Optional[str], optional): Path to a file where to save the figure. Defaults to None.
@@ -416,6 +417,15 @@ class Tracking(AbsSave):
         plt.show()
 
     def plot_tracking_event(self, event: int, proj: str = "XZ", hits: Optional[Hits] = None, figname: Optional[str] = None) -> None:
+        """Plot the hits and the fitted tracks for a given event.
+
+        Args:
+            event (int): The event to plot.
+            proj (str): The projection to plot along. Either XZ or YZ.
+            hits (Hits): An instance of the Hits class. Must be provided if self.hits is None.
+            figname (Optional[str], optional): Path to a file where to save the figure. Defaults to None.
+        """
+
         import matplotlib
 
         matplotlib.rc("font", **font)
@@ -431,6 +441,9 @@ class Tracking(AbsSave):
                 "ytick.labelsize": font["size"],  # Y-axis tick font size
             },
         )
+
+        if proj not in ("XZ", "YZ"):
+            raise ValueError("proj argument must be XZ or YZ.")
 
         dim_map = {
             "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]", "proj": "XZ"},
@@ -618,7 +631,7 @@ class Tracking(AbsSave):
     @property
     def tracks_eff(self) -> Tensor:
         r"""
-        The tracks efficiency.
+        The tracks efficiency: 1 -> tracks is detcted, 0 -> tracks not detected.
         """
         if self._tracks_eff is None:
             if self.hits is not None:
@@ -634,7 +647,7 @@ class Tracking(AbsSave):
     @property
     def tracking_eff(self) -> float:
         r"""
-        The tracking efficiecny, defined as the number of triggered events
+        The tracking efficiency, defined as the number of detected events
         divided by the total number of events.
         """
         return self.tracks_eff.sum().detach().cpu().item() / self.n_mu
@@ -723,7 +736,7 @@ class Tracking(AbsSave):
         self._measurement_type = value
 
 
-class TrackingMST(AbsSave):
+class TrackingMST:
     r"""
     A class for tracking muons in the context of a Muon Scattering Tomography analysis.
     """
@@ -739,21 +752,17 @@ class TrackingMST(AbsSave):
 
     def __init__(
         self,
-        trackings: Optional[Tuple[Tracking, Tracking]] = None,
-        output_dir: Optional[str] = None,
+        trackings: Tuple[Tracking, Tracking] = None,
     ) -> None:
         r"""
         Initializes the TrackingMST object with 2 instances of the Tracking class
         (with tags 'above' and 'below').
 
         Args:
-            - trackings (Optional[Tuple[Tracking, Tracking]]): instances of the Tracking class
+            - trackings (Tuple[Tracking, Tracking]): instances of the Tracking class
             for the incoming muon tracks (Tracking.label = 'above') and outgoing tracks
             (Tracking.label = 'below')
-            - output_dir (Optional[str]): Path to a directory where to save TrackingMST attributes
-            in a hdf5 file.
         """
-        super().__init__(output_dir=output_dir)
 
         # Load data from Tracking instances
         if trackings is not None:
@@ -963,6 +972,15 @@ class TrackingMST(AbsSave):
         ax: matplotlib.axes._axes.Axes,
         dim_xy: Tuple[int, int],
     ) -> None:
+        r"""
+        Plot the volume of interest along the desired projection on provided matplolib axis.
+
+        Args:
+            voi (Volume): Instance of the volume class.
+            ax (matplotlib.axes._axes.Axes): The axis to plot on.
+            dim_xy (Tuple[int, int]): The index of the x and y dimension on the plot.
+            e.g for XZ projection, dim_xy = (0, 2), for YZ projection, dim_xy = (1, 2).
+        """
         from matplotlib.patches import Rectangle
 
         ax.add_patch(
@@ -990,6 +1008,18 @@ class TrackingMST(AbsSave):
         label: str,
         size: int = 100,
     ) -> None:
+        r"""
+        Plot a point on the provided matplotlib axes.
+
+        Args:
+            point (np.ndarray): The point to plot, with shape (3,).
+            ax (matplotlib.axes._axes.Axes): The axis to plot on.
+            dim_xy (Tuple[int, int]): The index of the x and y dimension on the plot.
+            e.g for XZ projection, dim_xy = (0, 2), for YZ projection, dim_xy = (1, 2).
+            color (str): The desired point color.
+            label (str): The label to put on the legend.
+            size (int): The size of the point.
+        """
         ax.scatter(x=point[dim_xy[0]], y=point[dim_xy[1]], label=f"Fitted point {label}", color=color, marker="x", s=size)
 
     def plot_tracking_event(
@@ -999,6 +1029,14 @@ class TrackingMST(AbsSave):
         voi: Optional[Volume] = None,
         figname: Optional[str] = None,
     ) -> None:
+        """Plot the fitted incoming and outgoing tracks and point for the desired event.
+
+        Args:
+            event (int): The desired event.
+            proj (str, optional): The desired projection, either `XZ` or `YZ`. Defaults to "XZ".
+            voi (Optional[Volume], optional): An instance of the Volume class. If provided, gets represented on the plot. Defaults to None.
+            figname (Optional[str], optional): If provided, the figure is saved as `figname`. Defaults to None.
+        """
         import matplotlib
 
         matplotlib.rc("font", **font)
@@ -1088,6 +1126,9 @@ class TrackingMST(AbsSave):
     # Hits
     @property
     def hits_in(self) -> Hits:
+        r"""
+        The hits of the incoming muons.
+        """
         return self._hits_in
 
     @hits_in.setter
@@ -1096,6 +1137,9 @@ class TrackingMST(AbsSave):
 
     @property
     def hits_out(self) -> Hits:
+        r"""
+        The hits of the outgoing muons.
+        """
         return self._hits_out
 
     @hits_out.setter
@@ -1143,6 +1187,9 @@ class TrackingMST(AbsSave):
 
     @property
     def tracks_eff_in(self) -> Tensor:
+        r"""
+        The incoming tracks efficiency: 1 -> tracks is detcted, 0 -> tracks not detected.
+        """
         return self._tracks_eff_in
 
     @tracks_eff_in.setter
@@ -1151,6 +1198,9 @@ class TrackingMST(AbsSave):
 
     @property
     def tracks_eff_out(self) -> Tensor:
+        r"""
+        The outgoing tracks efficiency: 1 -> tracks is detcted, 0 -> tracks not detected.
+        """
         return self._tracks_eff_out
 
     @tracks_eff_out.setter
