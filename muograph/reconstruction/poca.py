@@ -1,9 +1,13 @@
 import torch
 from torch import Tensor
 from copy import deepcopy
-from typing import Optional
+from typing import Optional, Dict, Union
+import matplotlib
+import matplotlib.pyplot as plt
 from fastprogress import progress_bar
 import numpy as np
+import seaborn as sns
+import math
 
 from muograph.utils.save import AbsSave
 from muograph.utils.device import DEVICE
@@ -11,6 +15,12 @@ from muograph.utils.datatype import dtype_track, dtype_n
 from muograph.volume.volume import Volume
 from muograph.tracking.tracking import TrackingMST
 from muograph.plotting.voxel import VoxelPlotting
+from muograph.plotting.params import font
+
+
+r"""
+Provides class for copmuting POCA locations and POCA-based voxelized scattering density predictions
+"""
 
 
 def are_parallel(v1: Tensor, v2: Tensor, tol: float = 1e-5) -> bool:
@@ -78,7 +88,6 @@ class POCA(AbsSave, VoxelPlotting):
             self.tracks._filter_muons(self.parallel_mask)
 
             # Remove POCAs outside voi
-
             self.tracks._filter_muons(self.mask_in_voi)
             self._filter_pocas(self.mask_in_voi)
 
@@ -89,6 +98,9 @@ class POCA(AbsSave, VoxelPlotting):
         # Load poca attributes from hdf5 if poca_file is provided
         elif tracking is None and poca_file is not None:
             self.load_attr(self._vars_to_load, poca_file)
+
+    def __repr__(self) -> str:
+        return f"Collection of {self.n_mu} POCA locations."
 
     @staticmethod
     def compute_parallel_mask(tracks_in: Tensor, tracks_out: Tensor, tol: float = 1e-7) -> Tensor:
@@ -295,6 +307,94 @@ class POCA(AbsSave, VoxelPlotting):
 
         masks_xyz = [(poca_points[:, i] >= voi.xyz_min[i]) & (poca_points[:, i] <= voi.xyz_max[i]) for i in range(3)]
         return masks_xyz[0] & masks_xyz[1] & masks_xyz[2]
+
+    def plot_poca_event(self, event: int, proj: str = "XZ", voi: Optional[Volume] = None, figname: Optional[str] = None) -> None:
+        matplotlib.rc("font", **font)
+
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
+
+        dim_map: Dict[str, Dict[str, Union[str, int]]] = {
+            "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]", "proj": "XZ"},
+            "YZ": {"x": 1, "y": 2, "xlabel": r"$y$ [mm]", "ylabel": r"$z$ [mm]", "proj": "YZ"},
+        }
+
+        dim_xy = (int(dim_map[proj]["x"]), int(dim_map[proj]["y"]))
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        fig.suptitle(
+            f"Tracking of event {event:,d}"
+            + "\n"
+            + f"{dim_map[proj]['proj']} projection, "
+            + r"$\delta\theta$ = "
+            + f"{self.tracks.dtheta[event] * 180 / math.pi:.2f} deg",
+            fontweight="bold",
+        )
+
+        points_in_np = self.tracks.points_in.detach().cpu().numpy()
+        points_out_np = self.tracks.points_out.detach().cpu().numpy()
+        track_in_np = self.tracks.tracks_in.detach().cpu().numpy()[event]
+        track_out_no = self.tracks.tracks_out.detach().cpu().numpy()[event]
+
+        # Get plot xy span
+        y_span = np.abs(points_in_np[event, 2] - points_out_np[event, 2])
+
+        # Get x min max
+        x_min = min(np.min(points_in_np[:, dim_map[proj]["x"]]), np.min(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
+        x_max = max(np.max(points_in_np[:, dim_map[proj]["x"]]), np.max(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
+
+        # Set plot x span
+        ax.set_xlim(xmin=x_min, xmax=x_max)
+
+        # Plot fitted point
+        for point, label, color in zip((points_in_np, points_out_np), ("in", "out"), ("red", "green")):
+            self.tracks.plot_point(ax=ax, point=point[event], dim_xy=dim_xy, color=color, label=label)
+
+        # plot fitted track
+        for point, track, label, pm, color in zip(
+            (points_in_np[event], points_out_np[event]), (track_in_np, track_out_no), ("in", "out"), (1, -1), ("red", "green")
+        ):
+            ax.plot(
+                [point[dim_map[proj]["x"]], point[dim_map[proj]["x"]] + track[dim_map[proj]["x"]] * y_span * pm],  # type: ignore
+                [point[dim_map[proj]["y"]], point[dim_map[proj]["y"]] + track[dim_map[proj]["y"]] * y_span * pm],  # type: ignore
+                alpha=0.4,
+                color=color,
+                linestyle="--",
+                label=f"Fitted track {label}",
+            )
+        # Plot POCA point
+        self.tracks.plot_point(ax=ax, point=self.poca_points[event].detach().cpu().numpy(), dim_xy=dim_xy, color="purple", label="POCA", size=100)
+
+        # Plot volume of interest (if provided)
+        if voi is not None:
+            self.tracks.plot_voi(voi=voi, ax=ax, dim_xy=dim_xy)  # type: ignore
+
+        plt.tight_layout()
+
+        ax.legend(
+            bbox_to_anchor=(1.0, 0.7),
+        )
+        ax.set_aspect("equal")
+        ax.set_xlabel(f"{dim_map[proj]['xlabel']}", fontweight="bold")
+        ax.set_ylabel(f"{dim_map[proj]['ylabel']}", fontweight="bold")
+
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
+        plt.show()
+
+    @property
+    def n_mu(self) -> int:
+        r"""The number of muons."""
+        return self.poca_points.shape[0]
 
     @property
     def poca_points(self) -> Tensor:

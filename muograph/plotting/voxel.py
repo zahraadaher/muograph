@@ -5,7 +5,7 @@ import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
+import seaborn as sns
 
 from muograph.volume.volume import Volume
 from muograph.plotting.params import (
@@ -194,7 +194,7 @@ class VoxelPlotting:
         xyz_voxel_pred_uncs: Optional[Tensor] = None,
         voi_slice: Union[int, Tuple[int, int]] = 0,
         dim: int = 2,
-        filename: Optional[str] = None,
+        figname: Optional[str] = None,
         reverse: bool = False,
         pred_label: str = "Scattering density",
         fig_suptitle: str = "Voxels predictions",
@@ -214,13 +214,14 @@ class VoxelPlotting:
 
         Args:
             - voi (`Volume`): An instance of the volume class.
-            - xyz_voxel_preds (`Tensor`): The 3D tensor containing voxel-wise predictions (shape: [n_vox_x, n_vox_y, n_vox_z]).
+            - xyz_voxel_preds (`Tensor`): Tensor containing voxel predictions for the volume. (shape: [n_vox_x, n_vox_y, n_vox_z]).
             - xyz_voxel_pred_uncs : (`Optional[Tensor]`): Optional 3D tensor of the same shape as `xyz_voxel_preds` containing prediction
             uncertainties, by default None.
-            - voi_slice  (`Tuple[int, int]`): The index of the slice along the selected dimension `dim`.
+            - voi_slice  (`Tuple[int, int]`):  Start and end indices for slicing along the specified dimension.
+                Defaults to None, which uses the full range of the dimension.
             - dim (`int`): The dimension along which to slice the 3D voxel-wise predictions.
             Must be 0, 1, or 2 corresponding to x, y, or z axes respectively.
-            - filename (`Optional[str]`): If provided, saves the plot to the given file name, by default None.
+            - figname (`Optional[str]`): If provided, saves the plot to the given file name, by default None.
             - reverse  (`bool`) Whether to reverse the colormap, by default False.
             - pred_label (`Optional[str]`): Label for the prediction data, used in axis labels and title, by default 'Prediction'.
             - pred_unit (`Optional[str]`): Unit of the predictions to be displayed in the colorbar and axis labels, by default '[unit]'.
@@ -230,6 +231,17 @@ class VoxelPlotting:
             predictions plot, by default None.
              - v_min_max ('Optional[Tuple]'): Sets the min and max values of the 2D histogram.
         """
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
 
         # Set default font
         matplotlib.rc("font", **font)
@@ -340,6 +352,9 @@ class VoxelPlotting:
             extent=dim_mapping[dim]["extent"],
         )
 
+        # Remove grid
+        ax.grid(False)
+
         # Set axis labels
         ax.set_xlabel(f"Voxel ${dim_mapping[dim]['x_label']}$ location [mm]", fontweight="bold")
         ax.set_ylabel(f"Voxel ${dim_mapping[dim]['y_label']}$ location [mm]", fontweight="bold")
@@ -431,9 +446,9 @@ class VoxelPlotting:
         ax_histy.set_xlabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
 
         # Save plot
-        if filename is not None:
+        if figname is not None:
             plt.savefig(
-                filename + "_" + dim_mapping[dim]["plane"] + "_view",  # type: ignore
+                figname + "_" + dim_mapping[dim]["plane"] + "_view",  # type: ignore
                 bbox_inches="tight",
             )
         plt.show()
@@ -446,14 +461,50 @@ class VoxelPlotting:
         dim: int = 2,
         ncols: int = 4,
         nslice_per_plot: int = 1,
-        filename: Optional[str] = None,
+        figname: Optional[str] = None,
         reverse: bool = False,
         fig_suptitle: str = "Voxels predictions",
-        colorbar_label: str = "Normalized density [a.u]",
+        pred_label: str = "Scattering density",
         pred_unit: str = "",
         scale: float = scale,
         cmap: str = cmap,
     ) -> None:
+        """
+        Plots voxel predictions by slicing through a specified dimension of the volume of interest.
+
+        Args:
+            - voi (Volume): The volume of interest containing voxel data and metadata.
+            - xyz_voxel_preds (Tensor): Tensor containing voxel predictions for the volume. (shape: [n_vox_x, n_vox_y, n_vox_z]).
+            - voi_slice (Optional[Tuple[int, int]]): Start and end indices for slicing along the specified dimension.
+                Defaults to None, which uses the full range of the dimension.
+            - dim (int): The dimension along which to slice the 3D voxel-wise predictions.
+            Must be 0, 1, or 2 corresponding to x, y, or z axes respectively. Defaults to 2.
+            - ncols (int): Number of columns for the subplot grid. Defaults to 4.
+            - nslice_per_plot (int): Number of slices to aggregate per subplot. Defaults to 1.
+            - figname (Optional[str]): Name of the file to save the generated plots. Defaults to None.
+            - reverse (bool): Whether to reverse the colormap. Defaults to False.
+            - fig_suptitle (str): Title for the figure. Defaults to "Voxels predictions".
+            - pred_label (str): Label for the prediction values in the colorbar. Defaults to "Scattering density".
+            - pred_unit (str): Unit of the prediction values. Defaults to an empty string.
+            - scale (float): Scaling factor for the figure size. Defaults to a predefined `scale`.
+            - cmap (str): Colormap to use for the plot. Defaults to a predefined `cmap`.
+
+        Returns:
+            - None: Displays the generated plots and optionally saves them to a file.
+        """
+
+        sns.set_theme(
+            style="darkgrid",
+            rc={
+                "font.family": font["family"],
+                "font.size": font["size"],
+                "axes.labelsize": font["size"],  # Axis label font size
+                "axes.titlesize": font["size"],  # Axis title font size
+                "xtick.labelsize": font["size"],  # X-axis tick font size
+                "ytick.labelsize": font["size"],  # Y-axis tick font size
+            },
+        )
+
         # Set default font
         matplotlib.rc("font", **font)
 
@@ -607,6 +658,7 @@ class VoxelPlotting:
                 fontsize=fontsize - 1,
             )
             axs[i].set_aspect("equal")
+            axs[i].grid(False)
 
             # set axes x label
             if (i % ncols == 0) | (i == 0):
@@ -624,8 +676,8 @@ class VoxelPlotting:
 
         # Add color bar
         cbar_ax = fig.add_axes([1.01, 0.15, 0.05, 0.7])
-        cbar = fig.colorbar(im, cax=cbar_ax, label=colorbar_label)
-        cbar.set_label(colorbar_label + " " + pred_unit, fontweight="bold")  # Colorbar label
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label(pred_label + " " + pred_unit, fontweight="bold")  # Colorbar label
 
         plt.subplots_adjust(right=0.99)
 
@@ -640,9 +692,9 @@ class VoxelPlotting:
         )
 
         # Save file
-        if filename is not None:
+        if figname is not None:
             fig.savefig(
-                filename + "_" + dim_mapping[dim]["plane"] + "_view_slice",  # type: ignore
+                figname + "_" + dim_mapping[dim]["plane"] + "_view_slice",  # type: ignore
                 bbox_inches="tight",
             )
 
@@ -653,7 +705,7 @@ class VoxelPlotting:
         xyz_voxel_preds: Tensor,
         title: str = "Voxel-wise predictions",
         x_label: str = "Density predition [a.u]",
-        filename: Optional[str] = None,
+        figname: Optional[str] = None,
         log: bool = False,
         n_bins: int = n_bins,
     ) -> None:
@@ -704,8 +756,8 @@ class VoxelPlotting:
 
         ax.legend()
         plt.tight_layout()
-        if filename is not None:
-            plt.savefig(filename, bbox_inches="tight")
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
         plt.show()
 
     @staticmethod

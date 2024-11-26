@@ -3,7 +3,6 @@ import torch
 from torch import Tensor
 from copy import deepcopy
 from functools import partial
-import numpy as np
 import math
 from pathlib import Path
 
@@ -17,14 +16,22 @@ value_type = Union[float, partial, Tuple[float, float], bool, int]
 bca_params_type = Dict[str, value_type]
 
 
+r"""
+Provides class for copmuting voxelized scattering density predictions
+based on the Binned clustered algorithm (A binned clustering algorithm
+to detect high-Z material using cosmic muons, 2013 JINST 8 P10013,
+(http://iopscience.iop.org/1748-0221/8/10/P10013)).
+"""
+
+
 class BCA(POCA, AbsVoxelInferer):
     _hit_per_voxel: Optional[Tensor] = None  # (Nx, Ny, Nz)
 
     _bca_params: bca_params_type = {
-        "n_max_per_vox": 10,
+        "n_max_per_vox": 50,
         "n_min_per_vox": 3,
-        "score_method": partial(np.quantile, q=0.5),
-        "metric_method": partial(np.log),  # type: ignore
+        "score_method": partial(torch.quantile, q=0.5),
+        "metric_method": partial(torch.log),  # type: ignore
         "p_range": (0.0, 10000000),  # MeV
         "dtheta_range": (0.0, math.pi / 3),
         "use_p": False,
@@ -58,18 +65,18 @@ class BCA(POCA, AbsVoxelInferer):
     @staticmethod
     def compute_distance_2_points(points: Tensor) -> Tensor:
         r"""
-        Compute the distance between each pair of the given n 3D points.
+        Compute the distances between each pair of 3D points.
 
         Args:
-            - points (Tensor): The set of 3d points, with size (n,3).
+            - points (Tensor): A tensor of shape (n, 3) representing n 3D points.
 
         Returns:
-            - Distances (Tensor): a symmetric matrix with diagonal 0 of
-            the distances between each pair of non-identical points, with size (n,n).
+            - distances (Tensor): A symmetric matrix of shape (n, n) with distances between points.
         """
 
         points = points.reshape((points.size()[0], 3, 1))
-        distances = torch.sqrt(torch.sum(torch.square(points - points.mT), dim=1))
+        points_transposed = points.permute(2, 1, 0)
+        distances = torch.sqrt(torch.sum(torch.square(points - points_transposed), dim=1))
         return distances
 
     @staticmethod
@@ -85,6 +92,9 @@ class BCA(POCA, AbsVoxelInferer):
             - weights (Tensor) a symmetric matrix with size (mu, mu), if momentum is provided,
             computed as `(p * dtheta) * (p * dtheta).T`. If not, computed as `dtheta * dtheta.T`.
         """
+
+        dtheta = dtheta.unsqueeze(1)
+        p = p.unsqueeze(0)
 
         if p is not None:
             weights = dtheta * p * (dtheta * p).T
@@ -107,9 +117,9 @@ class BCA(POCA, AbsVoxelInferer):
         Args:
             - n_max_per_voxel (int) Number of highest scattering angle to keep
             among poca points located within a given voxel.
-            - voi (Volume) Instance of the voi class.
             - bca_indices (Tensor) Indices of voxels the poca points are located in.
             - dtheta (Tensor): Muon scattering angle.
+            - voi (Volume) Instance of the voi class.
 
         Returns:
             - mask (Tensor) a mask specifying true if the muon scattering angle is ranked
@@ -179,7 +189,7 @@ class BCA(POCA, AbsVoxelInferer):
         momentum: Tensor,
         metric_method: Optional[partial] = None,
     ) -> Tensor:
-        """
+        r"""
         Computes a voxel-wise scattering density metric.
         CREDITS: A binned clustering algorithm to detect high-Z material using cosmic muons,
                  2013 JINST 8 P10013, (http://iopscience.iop.org/1748-0221/8/10/P10013)
@@ -189,9 +199,11 @@ class BCA(POCA, AbsVoxelInferer):
             - use_p (bool) If True, the muon momentum is used in the `scattering_weights`
             computation.
             - bca_indices (Tensor) Indinces of voxels the poca points are located in.
-            - poca_points (Tensor) Poca points.
+            - poca_points (Tensor) Coordinates of poca points.
             - dtheta (Tensor) The muons scattering angle.
             - momentum (Tensor) Muons momentum if available.
+            - metric_method (Optional[partial]): Function to compute the voxel-wise metric.
+
 
         Returns:
             - full_metric (Tensor) The voxel-wise scattering density metric with size (n, n),
@@ -240,14 +252,18 @@ class BCA(POCA, AbsVoxelInferer):
         dtheta: Tensor,
         metric_method: partial,
     ) -> List:
-        """
+        r"""
         Compute voxel-wise weight distribution, according to the `compute_vox_wise_metric()` method.
 
         Args:
-             - use_p (bool) If `True`, momentum will be used in the voxel weight computation,
-                handled by `compute_vox_wise_metric()`. If `False`, only scattering angle will be used.
-             - n_min_per_voxel (int), the minimum number of POCA points per voxel. If a voxel contains
-             less than n_min_per_voxel, its final score will be 0.
+            - use_p (bool): Whether to include momentum in the computation.
+            - n_min_per_vox (int): Minimum number of POCA points required per voxel.
+            - voi (Volume): Instance of the `Volume` class.
+            - bca_indices (Tensor): Voxel indices of POCA points.
+            - poca_points (Tensor): Coordinates of POCA points.
+            - momentum (Tensor): Momentum of POCA points.
+            - dtheta (Tensor): Scattering angles of POCA points.
+            - metric_method (partial): Function to compute voxel-wise metrics.
 
         Returns:
              - score_list (List) List containing lists of scores for each voxel.
@@ -290,7 +306,7 @@ class BCA(POCA, AbsVoxelInferer):
         return score_list
 
     def compute_final_scores(self, score_list: List, score_method: partial) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
+        r"""
         Compute voxel-wise scores from a voxel-wise list of scores.
 
         Args:
@@ -348,23 +364,14 @@ class BCA(POCA, AbsVoxelInferer):
         2013 JINST 8 P10013,
         (http://iopscience.iop.org/1748-0221/8/10/P10013).
 
-        The values of BCA parameters provided as argument will be used. If None, the values
-        in `_bca_params` are used.
+        Compute voxel-wise scattering density predictions.
 
-        The algorithm computes the scattering density predictions `pred` as well as the number of
-        poca points used in the prediction of each voxel's scattering density `hit_per_vox`.
+        Uses parameters stored in `_bca_params`. The algorithm calculates:
+            - Scattering density predictions (`pred`).
+            - Number of POCA points used for each voxel's prediction (`hit_per_voxel`).
 
-        Args:
-            - n_max_per_voxel (int), the number of highest scattering angle to keep
-            among poca points located within a given voxel.
-            - score_method (partial) the function use to convert the score list into a float.
-            - p_range (Tuple[int]) the momentum range in MeV/c. Muons with `p` outside of `p_range`
-            are discarded.
-            - dtheta_range (Tuple[int]) the scattering angle range in radiants.
-            Muons with `dtheta` outside of `dtheta_range` are discarded.
-            - use_p (bool) if False, momentum is not used during metric computation.
-            - n_min_per_voxel:int, the min number of POCA point per voxel.
-            If a voxel contains less than n_min_per_voxel, is final score will be 0.
+        Returns:
+            - pred (Tensor): Tensor of voxel-wise scattering density predictions.
         """
 
         # Copy relevant features before event selection
