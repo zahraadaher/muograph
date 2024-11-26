@@ -277,7 +277,9 @@ def get_n_bins_xy_from_xy_span(dx: float, dy: float, n_bins: int = n_bins_2D) ->
     return nx, ny, pixel_size
 
 
-def plot_hist(data_1D: Tensor, xlabel: Optional[str] = None, logx: bool = False, logy: bool = False, figname: Optional[str] = None) -> None:
+def plot_hist(
+    data_1D: Tensor, ylabel: Optional[str] = None, xlabel: Optional[str] = None, logx: bool = False, logy: bool = False, figname: Optional[str] = None
+) -> None:
     import matplotlib.pyplot as plt
     import seaborn as sns
     from muograph.plotting.params import font
@@ -302,8 +304,10 @@ def plot_hist(data_1D: Tensor, xlabel: Optional[str] = None, logx: bool = False,
     sns.histplot(data=data_1D.detach().cpu().detach().numpy(), alpha=0.4, bins=50, ax=ax, log_scale=(logx, logy), color="blue")
 
     xlabel = "x" if xlabel is None else xlabel
+    ylabel = "frequency [a.u]" if xlabel is None else xlabel
+
     ax.set_xlabel(xlabel, fontweight="bold", fontsize=font["size"])
-    ax.set_ylabel("frequency [a.u]", fontweight="bold", fontsize=font["size"])
+    ax.set_ylabel(ylabel, fontweight="bold", fontsize=font["size"])
 
     if figname is not None:
         plt.savefig(figname, bbox_inches="tight")
