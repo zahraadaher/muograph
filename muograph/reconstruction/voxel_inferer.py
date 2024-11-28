@@ -1,6 +1,6 @@
 from typing import Optional
+import torch
 from torch import Tensor
-from torch.nn.functional import normalize
 
 from muograph.volume.volume import Volume
 from muograph.tracking.tracking import TrackingMST
@@ -58,4 +58,4 @@ class AbsVoxelInferer(
         r"""
         The normalized scattering density predictions.
         """
-        return normalize(self.xyz_voxel_pred.float())
+        return (self.xyz_voxel_pred.float() - torch.min(self.xyz_voxel_pred)) / (torch.max(self.xyz_voxel_pred.float()) - torch.min(self.xyz_voxel_pred))

@@ -1,3 +1,4 @@
+import matplotlib.axis
 import torch
 from torch import Tensor
 from typing import Tuple, Optional, Union
@@ -18,6 +19,7 @@ from muograph.plotting.params import (
     n_bins,
     labelsize,
     titlesize,
+    configure_plot_theme,
 )
 
 
@@ -761,10 +763,18 @@ class VoxelPlotting:
         plt.show()
 
     @staticmethod
-    def plot_voxel_grid(dim: int, voi: Volume, ax: matplotlib.axes._axes.Axes) -> None:
+    def plot_voxel_grid(
+        dim: int,
+        voi: Volume,
+        ax: matplotlib.axes._axes.Axes,
+        x_lim: Optional[Tuple[float, float]] = None,
+        y_lim: Optional[Tuple[float, float]] = None,
+    ) -> None:
         r"""
         Plot the voxel volume as a grid given the desired projection.
         """
+        # Configure plot theme
+        configure_plot_theme(font=font)  # type: ignore
 
         # The voxels edges in x,y,z
         voi_x_edges = voi.voxel_edges[:, 0, 0, 0, 0].tolist()
@@ -789,21 +799,15 @@ class VoxelPlotting:
                 "x_label": "x",
                 "y_label": "y",
                 "x_lim": (
-                    voi.xyz_min[0] - 2 * voi.vox_width,
-                    voi.xyz_max[0] + 2 * voi.vox_width,
+                    (voi.xyz_min[0] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[0] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
                 "y_lim": (
-                    voi.xyz_min[1] - 2 * voi.vox_width,
-                    voi.xyz_max[1] + 2 * voi.vox_width,
+                    (voi.xyz_min[1] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[1] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
-                "extent_x": (
-                    (2 * voi.vox_width / (voi.dxyz[0] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[0]) / (voi.dxyz[0] + 4 * voi.vox_width),
-                ),
-                "extent_y": (
-                    (2 * voi.vox_width / (voi.dxyz[1] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[1]) / (voi.dxyz[1] + 4 * voi.vox_width),
-                ),
+                "extent_x": (voi.xyz_min[0].detach().cpu().item(), voi.xyz_max[0].detach().cpu().item()),
+                "extent_y": (voi.xyz_min[1].detach().cpu().item(), voi.xyz_max[1].detach().cpu().item()),
             },
             1: {  # XZ plane
                 "x_edges": voi_x_edges,
@@ -817,21 +821,15 @@ class VoxelPlotting:
                 "x_label": "x",
                 "y_label": "z",
                 "x_lim": (
-                    voi.xyz_min[0] - 2 * voi.vox_width,
-                    voi.xyz_max[0] + 2 * voi.vox_width,
+                    (voi.xyz_min[0] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[0] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
                 "y_lim": (
-                    voi.xyz_min[2] - 2 * voi.vox_width,
-                    voi.xyz_max[2] + 2 * voi.vox_width,
+                    (voi.xyz_min[2] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[2] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
-                "extent_x": (
-                    (2 * voi.vox_width / (voi.dxyz[0] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[0]) / (voi.dxyz[0] + 4 * voi.vox_width),
-                ),
-                "extent_y": (
-                    (2 * voi.vox_width / (voi.dxyz[2] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[2]) / (voi.dxyz[2] + 4 * voi.vox_width),
-                ),
+                "extent_x": (voi.xyz_min[0].detach().cpu().item(), voi.xyz_max[0].detach().cpu().item()),
+                "extent_y": (voi.xyz_min[2].detach().cpu().item(), voi.xyz_max[2].detach().cpu().item()),
             },
             0: {  # YZ plane
                 "x_edges": voi_y_edges,
@@ -845,46 +843,51 @@ class VoxelPlotting:
                 "x_label": "y",
                 "y_label": "z",
                 "x_lim": (
-                    voi.xyz_min[1] - 2 * voi.vox_width,
-                    voi.xyz_max[1] + 2 * voi.vox_width,
+                    (voi.xyz_min[1] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[1] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
                 "y_lim": (
-                    voi.xyz_min[2] - 2 * voi.vox_width,
-                    voi.xyz_max[2] + 2 * voi.vox_width,
+                    (voi.xyz_min[2] - 2 * voi.vox_width).detach().cpu().item(),
+                    (voi.xyz_max[2] + 2 * voi.vox_width).detach().cpu().item(),
                 ),
-                "extent_x": (
-                    (2 * voi.vox_width / (voi.dxyz[1] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[1]) / (voi.dxyz[1] + 4 * voi.vox_width),
-                ),
-                "extent_y": (
-                    (2 * voi.vox_width / (voi.dxyz[2] + 4 * voi.vox_width)),
-                    (2 * voi.vox_width + voi.dxyz[2]) / (voi.dxyz[2] + 4 * voi.vox_width),
-                ),
+                "extent_x": (voi.xyz_min[1].detach().cpu().item(), voi.xyz_max[1].detach().cpu().item()),
+                "extent_y": (voi.xyz_min[2].detach().cpu().item(), voi.xyz_max[2].detach().cpu().item()),
             },
         }
 
         # Set axis limits
-        ax.set_xlim(mapping[dim]["x_lim"])
-        ax.set_ylim(mapping[dim]["y_lim"])
+        x_lim = mapping[dim]["x_lim"] if x_lim is None else x_lim  # type: ignore
+        y_lim = mapping[dim]["y_lim"] if y_lim is None else y_lim  # type: ignore
+
+        ax.set_xlim(x_lim)
+        ax.set_ylim(y_lim)
         ax.set_aspect("equal")
 
         # Set axis labels
-        ax.set_xlabel(mapping[dim]["x_label"] + f" [{d_unit}]")  # type: ignore
-        ax.set_ylabel(mapping[dim]["y_label"] + f" [{d_unit}]")  # type: ignore
+        ax.set_xlabel(mapping[dim]["x_label"] + f" [{d_unit}]", fontweight="bold")  # type: ignore
+        ax.set_ylabel(mapping[dim]["y_label"] + f" [{d_unit}]", fontweight="bold")  # type: ignore
+
+        def get_norm_extend(extent: Tuple[float, float], min_max: Tuple[float, float]) -> Tuple[float, float]:
+            e_min = (extent[0] - min_max[0]) / (min_max[1] - min_max[0])
+            e_max = (extent[1] - min_max[0]) / (min_max[1] - min_max[0])
+            return e_min, e_max
+
+        extent_x = get_norm_extend(mapping[dim]["extent_x"], min_max=x_lim)  # type: ignore
+        extent_y = get_norm_extend(mapping[dim]["extent_y"], min_max=y_lim)  # type: ignore
 
         # Plot voxel grid
         for x in mapping[dim]["x_edges"]:
             ax.axvline(
                 x=x,
                 alpha=0.5,
-                ymin=mapping[dim]["extent_y"][0].item(),
-                ymax=mapping[dim]["extent_y"][1].item(),
+                ymin=extent_y[0],
+                ymax=extent_y[1],
             )
 
         for y in mapping[dim]["y_edges"]:
             ax.axhline(
                 y=y,
                 alpha=0.5,
-                xmin=mapping[dim]["extent_x"][0].item(),
-                xmax=mapping[dim]["extent_x"][1].item(),
+                xmin=extent_x[0],
+                xmax=extent_x[1],
             )

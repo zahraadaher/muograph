@@ -7,13 +7,24 @@ from torch import Tensor
 from pathlib import Path
 from fastprogress import progress_bar
 import h5py
+import matplotlib.pyplot as plt
 
 from muograph.utils.save import AbsSave
 from muograph.tracking.tracking import TrackingMST
 from muograph.volume.volume import Volume
 from muograph.reconstruction.voxel_inferer import AbsVoxelInferer
+from muograph.plotting.params import configure_plot_theme, font, tracking_figsize
 
 value_type = Union[partial, Tuple[float, float], bool]
+
+
+r"""
+Provides class for computing voxelized scattering density predictions
+based on the Binned clustered algorithm (Angle Statistics Reconstruction:
+a robust reconstruction algorithm for Muon Scattering Tomography,
+M. Stapleton et al 2014 JINST 9 P11019,
+https://iopscience.iop.org/article/10.1088/1748-0221/9/11/P11019)).
+"""
 
 
 class ASR(AbsSave, AbsVoxelInferer):
@@ -21,7 +32,7 @@ class ASR(AbsSave, AbsVoxelInferer):
     _n_mu_per_vox: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds = True
 
-    _ars_params: Dict[str, value_type] = {
+    _asr_params: Dict[str, value_type] = {
         "score_method": partial(np.quantile, q=0.5),
         "p_range": (0.0, 10000000),  # MeV
         "dtheta_range": (0.0, math.pi / 3),
@@ -39,6 +50,17 @@ class ASR(AbsSave, AbsVoxelInferer):
         output_dir: Optional[str] = None,
         triggered_vox_file: Optional[str] = None,
     ) -> None:
+        r"""Initializes the ASR object with either instances of the `Volume` and `TrackingMST` class
+
+        Args:
+            voi (Volume): The volume of interest, as an instance of the `Volume` class.
+            tracking (TrackingMST): The muon tracks, as an instance of the `TrackingMST` class.
+            output_dir (Optional[str], optional): Path to a directory where to save the triggered voxels
+            as a hdf5 file. Defaults to None.
+            triggered_vox_file (Optional[str], optional): Path to a hdf5 file where to load the triggered voxels
+            from. Defaults to None.
+        """
+
         AbsSave.__init__(self, output_dir=output_dir)
         AbsVoxelInferer.__init__(self, voi=voi, tracking=tracking)
 
@@ -49,6 +71,11 @@ class ASR(AbsSave, AbsVoxelInferer):
         elif triggered_vox_file is not None:
             self.tracks = tracking
             self.triggered_voxels = self.load_triggered_vox(triggered_vox_file)
+
+    def __repr__(self) -> str:
+        description = "ASR algorithm using a c"
+        description_tracks = self.tracks.__repr__()[1:]
+        return description + description_tracks
 
     @staticmethod
     def save_triggered_vox(triggered_voxels: List[np.ndarray], directory: Path, filename: str) -> None:
@@ -121,7 +148,7 @@ class ASR(AbsSave, AbsVoxelInferer):
         xyz_in_out_voi: Tuple[Tensor, Tensor],
         theta_xy_in: Tuple[Tensor, Tensor],
         theta_xy_out: Tuple[Tensor, Tensor],
-        n_points_per_z_layer: int = 3,
+        n_points_per_z_layer: int = 7,
     ) -> Tuple[Tensor, Tensor]:
         r"""
         Computes a discretized version of the muon incoming and outgoing track
@@ -167,7 +194,11 @@ class ASR(AbsSave, AbsVoxelInferer):
         return xyz_discrete_in, xyz_discrete_out
 
     @staticmethod
-    def _find_sub_volume(voi: Volume, xyz_in_voi: Tensor, xyz_out_voi: Tensor) -> List[List[Tensor]]:
+    def _find_sub_volume(
+        voi: Volume,
+        xyz_in_voi: Tensor,
+        xyz_out_voi: Tensor,
+    ) -> List[List[Tensor]]:
         r"""
         Find the xy voxel indices of the sub-volume which contains both incoming and outgoing tracks.
 
@@ -179,26 +210,37 @@ class ASR(AbsSave, AbsVoxelInferer):
         Returns:
              - sub_vol_indices_min_max (List[Tensor]): List containing the voxel indices.
         """
+        # Precompute voxel boundaries for simpler condition checks
+        voxel_edges_x_min = voi.voxel_edges[:, :, 0, 0, 0]
+        voxel_edges_x_max = voi.voxel_edges[:, :, 0, 1, 0]
+        voxel_edges_y_min = voi.voxel_edges[:, :, 0, 0, 1]
+        voxel_edges_y_max = voi.voxel_edges[:, :, 0, 1, 1]
+
+        # Get the min, max x and y coordinnates of the tracks entering the voi
+        xyz_min = torch.min(torch.cat([xyz_in_voi, xyz_out_voi], dim=1), dim=1).values
+        xyz_max = torch.max(torch.cat([xyz_in_voi, xyz_out_voi], dim=1), dim=1).values
+
+        x_min, y_min = xyz_min[:, 0], xyz_min[:, 1]
+        x_max, y_max = xyz_max[:, 0], xyz_max[:, 1]
 
         print("\nSub-volumes")
         sub_vol_indices_min_max = []
         n_mu = xyz_in_voi.size(0)
 
         for event in progress_bar(range(n_mu)):
-            x_min = torch.min(torch.min(xyz_in_voi[event, :, 0]), torch.min(xyz_out_voi[event, :, 0]))
-            x_max = torch.max(torch.max(xyz_in_voi[event, :, 0]), torch.max(xyz_out_voi[event, :, 0]))
+            # Filter valid voxels for this event
+            condition = (
+                (voxel_edges_x_min < x_max[event])
+                & (voxel_edges_x_max > x_min[event])
+                & (voxel_edges_y_min < y_max[event])
+                & (voxel_edges_y_max > y_min[event])
+            )
 
-            y_min = torch.min(torch.min(xyz_in_voi[event, :, 1]), torch.min(xyz_out_voi[event, :, 1]))
-            y_max = torch.max(torch.max(xyz_in_voi[event, :, 1]), torch.max(xyz_out_voi[event, :, 1]))
+            # Get the valid voxels indices
+            sub_vol_indices = condition.nonzero()
 
-            sub_vol_indices = (
-                (voi.voxel_edges[:, :, 0, 1, 0] > x_min)
-                & (voi.voxel_edges[:, :, 0, 1, 1] > y_min)
-                & (voi.voxel_edges[:, :, 0, 0, 0] < x_max)
-                & (voi.voxel_edges[:, :, 0, 0, 1] < y_max)
-            ).nonzero()
-
-            if len(sub_vol_indices) != 0:
+            # If sub_vol_indices is non-empty, determine bounds
+            if sub_vol_indices.numel() > 0:
                 sub_vol_indices_min_max.append([sub_vol_indices[0], sub_vol_indices[-1]])
 
             else:
@@ -234,35 +276,34 @@ class ASR(AbsSave, AbsVoxelInferer):
 
         print("\nVoxel triggering")
         for event in progress_bar(range(n_mu)):
+            event_indices = sub_vol_indices_min_max[event]
+
             if len(sub_vol_indices_min_max[event]) != 0:
-                ix_min, iy_min = (
-                    sub_vol_indices_min_max[event][0][0],
-                    sub_vol_indices_min_max[event][0][1],
-                )
-                ix_max, iy_max = (
-                    sub_vol_indices_min_max[event][1][0],
-                    sub_vol_indices_min_max[event][1][1],
-                )
+                ix_min, iy_min = event_indices[0][0], event_indices[0][1]
+                ix_max, iy_max = event_indices[1][0], event_indices[1][1]
 
                 sub_voi_edges = voi.voxel_edges[ix_min : ix_max + 1, iy_min : iy_max + 1]
                 sub_voi_edges = sub_voi_edges[:, :, :, :, None, :].expand(-1, -1, -1, -1, xyz_discrete_out.size()[1], -1)
 
+                xyz_in_event = xyz_discrete_in[:, :, event]
+                xyz_out_event = xyz_discrete_out[:, :, event]
+
                 sub_mask_in = (
-                    (sub_voi_edges[:, :, :, 0, :, 0] < xyz_discrete_in[0, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 0] > xyz_discrete_in[0, :, event])
-                    & (sub_voi_edges[:, :, :, 0, :, 1] < xyz_discrete_in[1, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 1] > xyz_discrete_in[1, :, event])
-                    & (sub_voi_edges[:, :, :, 0, :, 2] < xyz_discrete_in[2, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 2] > xyz_discrete_in[2, :, event])
+                    (sub_voi_edges[:, :, :, 0, :, 0] < xyz_in_event[0])
+                    & (sub_voi_edges[:, :, :, 1, :, 0] > xyz_in_event[0])
+                    & (sub_voi_edges[:, :, :, 0, :, 1] < xyz_in_event[1])
+                    & (sub_voi_edges[:, :, :, 1, :, 1] > xyz_in_event[1])
+                    & (sub_voi_edges[:, :, :, 0, :, 2] < xyz_in_event[2])
+                    & (sub_voi_edges[:, :, :, 1, :, 2] > xyz_in_event[2])
                 )
 
                 sub_mask_out = (
-                    (sub_voi_edges[:, :, :, 0, :, 0] < xyz_discrete_out[0, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 0] > xyz_discrete_out[0, :, event])
-                    & (sub_voi_edges[:, :, :, 0, :, 1] < xyz_discrete_out[1, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 1] > xyz_discrete_out[1, :, event])
-                    & (sub_voi_edges[:, :, :, 0, :, 2] < xyz_discrete_out[2, :, event])
-                    & (sub_voi_edges[:, :, :, 1, :, 2] > xyz_discrete_out[2, :, event])
+                    (sub_voi_edges[:, :, :, 0, :, 0] < xyz_out_event[0])
+                    & (sub_voi_edges[:, :, :, 1, :, 0] > xyz_out_event[0])
+                    & (sub_voi_edges[:, :, :, 0, :, 1] < xyz_out_event[1])
+                    & (sub_voi_edges[:, :, :, 1, :, 1] > xyz_out_event[1])
+                    & (sub_voi_edges[:, :, :, 0, :, 2] < xyz_out_event[2])
+                    & (sub_voi_edges[:, :, :, 1, :, 2] > xyz_out_event[2])
                 )
 
                 vox_list = (sub_mask_in & sub_mask_out).nonzero()[:, :-1].unique(dim=0)
@@ -270,7 +311,7 @@ class ASR(AbsSave, AbsVoxelInferer):
                 vox_list[:, 1] += iy_min
                 triggered_voxels.append(vox_list.detach().cpu().numpy())
             else:
-                triggered_voxels.append([])
+                triggered_voxels.append(np.empty([0, 3]))
         return triggered_voxels
 
     @staticmethod
@@ -323,8 +364,7 @@ class ASR(AbsSave, AbsVoxelInferer):
         Returns:
              - triggered_voxels (List[np.ndarray]): the list of triggered voxels.
         """
-
-        xyz_in_out_voi = ASR._compute_xyz_in_out(
+        xyz_in_voi, xyz_out_voi = ASR._compute_xyz_in_out(
             points_in=points_in,
             points_out=points_out,
             voi=voi,
@@ -334,12 +374,13 @@ class ASR(AbsSave, AbsVoxelInferer):
 
         xyz_discrete_in, xyz_discrete_out = ASR._compute_discrete_tracks(
             voi=voi,
+            xyz_in_out_voi=(xyz_in_voi, xyz_out_voi),
             theta_xy_in=theta_xy_in,
             theta_xy_out=theta_xy_out,
-            xyz_in_out_voi=xyz_in_out_voi,
+            n_points_per_z_layer=7,
         )
 
-        sub_vol_indices_min_max = ASR._find_sub_volume(voi=voi, xyz_in_voi=xyz_in_out_voi[0], xyz_out_voi=xyz_in_out_voi[1])
+        sub_vol_indices_min_max = ASR._find_sub_volume(voi=voi, xyz_in_voi=xyz_in_voi, xyz_out_voi=xyz_out_voi)
 
         return ASR._find_triggered_voxels(
             voi=voi,
@@ -360,7 +401,7 @@ class ASR(AbsSave, AbsVoxelInferer):
             [[[] for _ in range(self.voi.n_vox_xyz[2])] for _ in range(self.voi.n_vox_xyz[1])] for _ in range(self.voi.n_vox_xyz[0])
         ]
 
-        if self._ars_params["use_p"]:
+        if self._asr_params["use_p"]:
             score = np.log(self.tracks.dtheta.detach().cpu().numpy() * self.tracks.E.detach().cpu().numpy())
         else:
             score = self.tracks.dtheta.detach().cpu().numpy()
@@ -414,6 +455,79 @@ class ASR(AbsSave, AbsVoxelInferer):
 
         return n_mu_per_vox
 
+    def plot_asr_event(self, event: int, proj: str = "XZ", figname: Optional[str] = None) -> None:
+        configure_plot_theme(font=font)  # type: ignore
+
+        # Inidices and labels
+        dim_map: Dict[str, Dict[str, Union[str, int]]] = {
+            "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]"},
+            "YZ": {"x": 1, "y": 2, "xlabel": r"$y$ [mm]", "ylabel": r"$z$ [mm]"},
+        }
+
+        # Data numpy
+        points_in_np = self.tracks.points_in.detach().cpu().numpy()
+        points_out_np = self.tracks.points_out.detach().cpu().numpy()
+        track_in_np = self.tracks.tracks_in.detach().cpu().numpy()[event]
+        track_out_no = self.tracks.tracks_out.detach().cpu().numpy()[event]
+
+        # Y span
+        y_span = abs(points_in_np[event, 2] - points_out_np[event, 2])
+
+        fig, ax = plt.subplots(figsize=tracking_figsize)
+        if self.triggered_voxels[event].shape[0] > 0:
+            n_trig_vox = f"# triggered voxels = {self.triggered_voxels[event].shape[0]}"
+        else:
+            n_trig_vox = "no voxels triggered"
+        fig.suptitle(
+            f"Tracking of event {event:,d}" + "\n" + r"$\delta\theta$ = " + f"{self.tracks.dtheta[event] * 180 / math.pi:.2f} deg, " + n_trig_vox,
+            fontweight="bold",
+            y=1.05,
+        )
+
+        # Plot voxel grid
+        self.plot_voxel_grid(
+            dim=1,
+            voi=self.voi,
+            ax=ax,
+        )
+
+        # Plot triggered voxels
+        if self.triggered_voxels[event].shape[0] > 0:
+            for i, vox_idx in enumerate(self.triggered_voxels[event]):
+                ix, iy = vox_idx[dim_map[proj]["x"]], vox_idx[2]
+                vox_x = self.voi.voxel_centers[ix, 0, 0, 0] if proj == "XZ" else self.voi.voxel_centers[0, ix, 0, 1]
+                label = "Triggered voxel" if i == 0 else None
+                ax.scatter(
+                    x=vox_x,
+                    y=self.voi.voxel_centers[0, 0, iy, 2],
+                    color="blue",
+                    label=label,
+                    alpha=0.3,
+                )
+
+        # Plot tracks
+        for point, track, label, pm, color in zip(
+            (points_in_np[event], points_out_np[event]), (track_in_np, track_out_no), ("in", "out"), (1, -1), ("red", "green")
+        ):
+            ax.plot(
+                [point[dim_map[proj]["x"]], point[dim_map[proj]["x"]] + track[dim_map[proj]["x"]] * y_span * pm],  # type: ignore
+                [point[dim_map[proj]["y"]], point[dim_map[proj]["y"]] + track[dim_map[proj]["y"]] * y_span * pm],  # type: ignore
+                alpha=0.6,
+                color=color,
+                linestyle="--",
+                label=f"Fitted track {label}",
+            )
+
+        # Legend
+        ax.legend(
+            bbox_to_anchor=(1.0, 0.7),
+        )
+
+        # Save figure
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
+        plt.show()
+
     @property
     def theta_xy_in(self) -> Tuple[Tensor, Tensor]:
         r"""
@@ -428,14 +542,14 @@ class ASR(AbsSave, AbsVoxelInferer):
         Returns:
             Tuple[(mu, )] tensors of muons outgoing projected zenith angles in XZ and YZ plane.
         """
-        return (self.tracks.theta_xy_out[0], self.tracks.theta_xy_out[0])
+        return (self.tracks.theta_xy_out[0], self.tracks.theta_xy_out[1])
 
     @property
     def asr_params(self) -> Dict[str, value_type]:
         r"""
         The parameters of the ASR algorithm.
         """
-        return self._ars_params
+        return self._asr_params
 
     @asr_params.setter
     def asr_params(self, value: Dict[str, value_type]) -> None:
@@ -446,9 +560,9 @@ class ASR(AbsSave, AbsVoxelInferer):
             valid name and non `None` values wil be updated.
         """
         for key in value.keys():
-            if key in self._ars_params.keys():
+            if key in self._asr_params.keys():
                 if value[key] is not None:
-                    self._ars_params[key] = value[key]
+                    self._asr_params[key] = value[key]
 
         self._recompute_preds = True
 

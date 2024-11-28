@@ -11,7 +11,7 @@ import numpy as np
 from muograph.utils.save import AbsSave
 from muograph.hits.hits import Hits
 from muograph.volume.volume import Volume
-from muograph.plotting.params import n_bins, font, alpha_sns, titlesize, hist_figsize, hist2_figsize, labelsize, tracking_figsize
+from muograph.plotting.params import n_bins, font, alpha_sns, titlesize, hist_figsize, hist2_figsize, labelsize, tracking_figsize, configure_plot_theme
 from muograph.utils.device import DEVICE
 
 r"""
@@ -1037,30 +1037,29 @@ class TrackingMST:
             voi (Optional[Volume], optional): An instance of the Volume class. If provided, gets represented on the plot. Defaults to None.
             figname (Optional[str], optional): If provided, the figure is saved as `figname`. Defaults to None.
         """
-        import matplotlib
+        configure_plot_theme(font=font)  # type: ignore
 
-        matplotlib.rc("font", **font)
-
-        sns.set_theme(
-            style="darkgrid",
-            rc={
-                "font.family": font["family"],
-                "font.size": font["size"],
-                "axes.labelsize": font["size"],  # Axis label font size
-                "axes.titlesize": font["size"],  # Axis title font size
-                "xtick.labelsize": font["size"],  # X-axis tick font size
-                "ytick.labelsize": font["size"],  # Y-axis tick font size
-            },
-        )
+        # Numpy data
+        points_in_np = self.points_in.detach().cpu().numpy()
+        points_out_np = self.points_out.detach().cpu().numpy()
+        track_in_np = self.tracks_in.detach().cpu().numpy()[event]
+        track_out_no = self.tracks_out.detach().cpu().numpy()[event]
 
         dim_map: Dict[str, Dict[str, Union[str, int]]] = {
             "XZ": {"x": 0, "y": 2, "xlabel": r"$x$ [mm]", "ylabel": r"$z$ [mm]", "proj": "XZ"},
             "YZ": {"x": 1, "y": 2, "xlabel": r"$y$ [mm]", "ylabel": r"$z$ [mm]", "proj": "YZ"},
+            "XY": {
+                "x": 0,
+                "y": 1,
+                "xlabel": r"$x$ [mm]",
+                "ylabel": r"$y$ [mm]",
+                "proj": "XY",
+            },
         }
 
         dim_xy = (int(dim_map[proj]["x"]), int(dim_map[proj]["y"]))
 
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=tracking_figsize)
         fig.suptitle(
             f"Tracking of event {event:,d}"
             + "\n"
@@ -1070,20 +1069,18 @@ class TrackingMST:
             fontweight="bold",
         )
 
-        points_in_np = self.points_in.detach().cpu().numpy()
-        points_out_np = self.points_out.detach().cpu().numpy()
-        track_in_np = self.tracks_in.detach().cpu().numpy()[event]
-        track_out_no = self.tracks_out.detach().cpu().numpy()[event]
-
         # Get plot xy span
-        y_span = np.abs(points_in_np[event, 2] - points_out_np[event, 2])
+        y_min = min(np.min(points_in_np[:, dim_map[proj]["y"]]), np.min(points_out_np[:, dim_map[proj]["y"]]))  # type: ignore
+        y_max = max(np.max(points_in_np[:, dim_map[proj]["y"]]), np.max(points_out_np[:, dim_map[proj]["y"]]))  # type: ignore
+        y_span = abs(y_min - y_max)
 
-        # Get x min max
         x_min = min(np.min(points_in_np[:, dim_map[proj]["x"]]), np.min(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
         x_max = max(np.max(points_in_np[:, dim_map[proj]["x"]]), np.max(points_out_np[:, dim_map[proj]["x"]]))  # type: ignore
+        x_span = abs(x_min - x_max)
 
         # Set plot x span
-        ax.set_xlim(xmin=x_min, xmax=x_max)
+        ax.set_xlim(xmin=x_min - x_span / 10, xmax=x_max + x_span / 10)
+        ax.set_ylim(ymin=y_min - y_span / 10, ymax=y_max + y_span / 10)
 
         # Plot fitted point
         for point, label, color in zip((points_in_np, points_out_np), ("in", "out"), ("red", "green")):
@@ -1093,8 +1090,8 @@ class TrackingMST:
             (points_in_np[event], points_out_np[event]), (track_in_np, track_out_no), ("in", "out"), (1, -1), ("red", "green")
         ):
             ax.plot(
-                [point[dim_map[proj]["x"]], point[dim_map[proj]["x"]] + track[dim_map[proj]["x"]] * y_span * pm],  # type: ignore
-                [point[dim_map[proj]["y"]], point[dim_map[proj]["y"]] + track[dim_map[proj]["y"]] * y_span * pm],  # type: ignore
+                [point[dim_map[proj]["x"]], point[dim_map[proj]["x"]] + track[dim_map[proj]["x"]] * 2 * y_span * pm],  # type: ignore
+                [point[dim_map[proj]["y"]], point[dim_map[proj]["y"]] + track[dim_map[proj]["y"]] * 2 * y_span * pm],  # type: ignore
                 alpha=0.4,
                 color=color,
                 linestyle="--",

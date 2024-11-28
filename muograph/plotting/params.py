@@ -1,4 +1,6 @@
-from typing import Tuple
+from typing import Tuple, Dict, Union
+import seaborn as sns
+import matplotlib
 
 # Number of bins for histograms
 n_bins: int = 50
@@ -35,3 +37,20 @@ scale: int = 3
 
 # 2D histogram
 n_bins_2D = 100
+
+
+# Set seabron theme
+def configure_plot_theme(font: Dict[str, Union[str, int]]) -> None:
+    """Configure the plotting theme and default font."""
+    sns.set_theme(
+        style="darkgrid",
+        rc={
+            "font.family": font["family"],
+            "font.size": font["size"],
+            "axes.labelsize": font["size"],
+            "axes.titlesize": font["size"],
+            "xtick.labelsize": font["size"],
+            "ytick.labelsize": font["size"],
+        },
+    )
+    matplotlib.rc("font", **font)

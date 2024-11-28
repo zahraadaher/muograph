@@ -17,7 +17,7 @@ bca_params_type = Dict[str, value_type]
 
 
 r"""
-Provides class for copmuting voxelized scattering density predictions
+Provides class for computing voxelized scattering density predictions
 based on the Binned clustered algorithm (A binned clustering algorithm
 to detect high-Z material using cosmic muons, 2013 JINST 8 P10013,
 (http://iopscience.iop.org/1748-0221/8/10/P10013)).
