@@ -460,11 +460,13 @@ class Tracking(AbsSave):
             raise ValueError("Provide hits as argument.")
 
         elif self.hits is not None:
+            n_panels = self.hits.n_panels
             # Get data as numpy array
             reco_hits_np = self.hits.reco_hits.detach().cpu().numpy()
             gen_hits_np = self.hits.gen_hits.detach().cpu().numpy()
 
         elif hits is not None:
+            n_panels = hits.n_panels
             # Get data as numpy array
             reco_hits_np = hits.reco_hits.detach().cpu().numpy()
             gen_hits_np = hits.gen_hits.detach().cpu().numpy()
@@ -506,7 +508,7 @@ class Tracking(AbsSave):
 
         # Plot detector panels if XZ or YZ projection
         for ax in axs:
-            for i in range(self.hits.n_panels):
+            for i in range(n_panels):
                 label = "Detector panel" if i == 0 else None
                 ax.axhline(y=np.mean(reco_hits_np[dim_map[proj]["y"], i]), label=label, alpha=0.4)  # type: ignore
 

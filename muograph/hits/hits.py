@@ -13,6 +13,8 @@ from muograph.plotting.params import (
     n_bins_2D,
     hist_figsize,
     labelsize,
+    configure_plot_theme,
+    cmap,
 )
 from muograph.utils.datatype import dtype_hit, dtype_E
 from muograph.utils.device import DEVICE
@@ -247,8 +249,6 @@ class Hits:
                 reco_hits[i] += torch.normal(
                     mean=0.0,
                     std=torch.ones_like(reco_hits[i]) * spatial_res[i],
-                    # dtype=dtype_hit,
-                    # device=DEVICE
                 )
 
         return reco_hits
@@ -294,6 +294,7 @@ class Hits:
         plane_label: int = 0,
         reco_hits: bool = True,
         n_bins: int = n_bins_2D,
+        cmap: str = cmap,
         filename: Optional[str] = None,
     ) -> None:
         """Plot the XY coordinates of the muon hits on a given detector plane, as a 2D histogram.
@@ -307,6 +308,8 @@ class Hits:
         """
         # Set default font
         matplotlib.rc("font", **font)
+
+        configure_plot_theme(font)  # type: ignore
 
         # Create figure
         fig, ax = plt.subplots(figsize=hist_figsize)
@@ -326,6 +329,7 @@ class Hits:
             hits[0, plane_label].detach().cpu().numpy(),
             hits[1, plane_label].detach().cpu().numpy(),
             bins=(bins_x, bins_y),
+            cmap=cmap,
         )
 
         ax.set_aspect("equal")

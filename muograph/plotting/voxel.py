@@ -766,7 +766,7 @@ class VoxelPlotting:
     def plot_voxel_grid(
         dim: int,
         voi: Volume,
-        ax: matplotlib.axes._axes.Axes,
+        ax: Optional[matplotlib.axes._axes.Axes] = None,
         x_lim: Optional[Tuple[float, float]] = None,
         y_lim: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -775,6 +775,9 @@ class VoxelPlotting:
         """
         # Configure plot theme
         configure_plot_theme(font=font)  # type: ignore
+
+        if ax is None:
+            fig, ax = plt.subplots()
 
         # The voxels edges in x,y,z
         voi_x_edges = voi.voxel_edges[:, 0, 0, 0, 0].tolist()

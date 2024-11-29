@@ -5,7 +5,7 @@ from typing import Tuple, Optional
 import numpy as np
 
 from muograph.volume.volume import Volume
-from muograph.plotting.params import d_unit, n_bins_2D
+from muograph.plotting.params import d_unit, n_bins_2D, n_bins
 
 
 def plot_n_poca_per_voxel(n_poca_per_vox: Tensor, dim: int, plot_name: Optional[str] = None) -> None:
@@ -278,7 +278,13 @@ def get_n_bins_xy_from_xy_span(dx: float, dy: float, n_bins: int = n_bins_2D) ->
 
 
 def plot_hist(
-    data_1D: Tensor, ylabel: Optional[str] = None, xlabel: Optional[str] = None, logx: bool = False, logy: bool = False, figname: Optional[str] = None
+    data_1D: Tensor,
+    ylabel: Optional[str] = None,
+    xlabel: Optional[str] = None,
+    logx: bool = False,
+    logy: bool = False,
+    figname: Optional[str] = None,
+    n_bins: int = n_bins,
 ) -> None:
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -301,10 +307,10 @@ def plot_hist(
     )
 
     fig, ax = plt.subplots()
-    sns.histplot(data=data_1D.detach().cpu().detach().numpy(), alpha=0.4, bins=50, ax=ax, log_scale=(logx, logy), color="blue")
+    sns.histplot(data=data_1D.detach().cpu().detach().numpy(), alpha=0.4, bins=n_bins, ax=ax, log_scale=(logx, logy), color="blue")
 
     xlabel = "x" if xlabel is None else xlabel
-    ylabel = "frequency [a.u]" if xlabel is None else xlabel
+    ylabel = "frequency [a.u]" if ylabel is None else ylabel
 
     ax.set_xlabel(xlabel, fontweight="bold", fontsize=font["size"])
     ax.set_ylabel(ylabel, fontweight="bold", fontsize=font["size"])

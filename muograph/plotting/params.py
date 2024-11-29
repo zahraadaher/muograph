@@ -36,7 +36,7 @@ tracking_figsize: Tuple[float, float] = (10, 5)
 scale: int = 3
 
 # 2D histogram
-n_bins_2D = 100
+n_bins_2D = 50
 
 
 # Set seabron theme
