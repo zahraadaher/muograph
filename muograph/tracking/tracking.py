@@ -987,12 +987,12 @@ class TrackingMST:
 
         ax.add_patch(
             Rectangle(
-                xy=(
+                xy=(  # type: ignore
                     voi.xyz_min[dim_xy[0]].detach().cpu().numpy(),
                     voi.xyz_min[dim_xy[1]].detach().cpu().numpy(),
                 ),
-                width=voi.dxyz[dim_xy[0]].detach().cpu().numpy(),
-                height=voi.dxyz[dim_xy[1]].detach().cpu().numpy(),
+                width=voi.dxyz[dim_xy[0]].detach().cpu().numpy(),  # type: ignore
+                height=voi.dxyz[dim_xy[1]].detach().cpu().numpy(),  # type: ignore
                 fill=True,
                 edgecolor="black",
                 facecolor="blue",

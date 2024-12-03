@@ -9,6 +9,7 @@ import numpy as np
 
 # Test data file path
 TEST_HIT_FILE = Path(__file__).parent / "../data/iron_barrel/barrel_and_cubes_scattering.csv"
+OUTPUT_DIR = "../output_test/"
 
 
 def get_tracks(hits_file: str, output_dir: Optional[str] = None) -> Tuple[Tracking, Tracking]:
@@ -51,7 +52,7 @@ def test_tracks_output() -> None:
     r"""
     Tests if the output tracking files are correctly created.
     """
-    output_dir = str(Path(muograph_path) / "../test_output/")
+    output_dir = str(Path(muograph_path) / OUTPUT_DIR)
     _ = get_tracks(hits_file=str(TEST_HIT_FILE), output_dir=output_dir)
 
     output_tracks_in_path = Path(output_dir) / "tracks_above.hdf5"
@@ -65,7 +66,7 @@ def test_tracks_loading() -> None:
     r"""
     Tests if the loaded tracking instances match the original instances.
     """
-    output_dir = str(Path(muograph_path) / "../test_output/")
+    output_dir = str(Path(muograph_path) / OUTPUT_DIR)
 
     tracks_in, tracks_out = get_tracks(hits_file=str(TEST_HIT_FILE), output_dir=output_dir)
 
@@ -115,7 +116,7 @@ def test_tracks_zenith() -> None:
     Raises:
         AssertionError: If any of the conditions are not met.
     """
-    output_dir = str(Path(muograph_path) / "../test_output/")
+    output_dir = str(Path(muograph_path) / OUTPUT_DIR)
     tracks_in, tracks_out = get_tracks(hits_file=str(TEST_HIT_FILE), output_dir=output_dir)
 
     tol = 0.05

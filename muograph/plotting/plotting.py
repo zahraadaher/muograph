@@ -36,7 +36,7 @@ def plot_n_poca_per_voxel(n_poca_per_vox: Tensor, dim: int, plot_name: Optional[
     ax.set_xlabel(xlabels[dim] + f" [{d_unit}]")
     ax.set_ylabel(ylabels[dim] + f" [{d_unit}]")
 
-    cbar_ax = fig.add_axes([1.0, 0.15, 0.05, 0.7])
+    cbar_ax = fig.add_axes(rect=(1.0, 0.15, 0.05, 0.7))
     fig.colorbar(im, cax=cbar_ax, label=" Average # poca per voxel")
     if plot_name is not None:
         plt.savefig(plot_name)
@@ -82,7 +82,7 @@ def plot_poca_points_per_pixel(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(1, 1, 1, projection="scatter_density")
 
-    density = ax.scatter_density(
+    density = ax.scatter_density(  # type: ignore
         poca_points[:, dimx[dim]].numpy(),
         poca_points[:, dimy[dim]].numpy(),
         cmap=white_viridis,
@@ -97,7 +97,7 @@ def plot_poca_points_per_pixel(
     ax.set_xlabel(xlabels[dim] + f" [{d_unit}]")
     ax.set_ylabel(ylabels[dim] + f" [{d_unit}]")
     ax.set_aspect("equal")
-    cbar_ax = fig.add_axes([1.0, 0.15, 0.05, 0.7])
+    cbar_ax = fig.add_axes(rect=(1.0, 0.15, 0.05, 0.7))
     fig.colorbar(density, cax=cbar_ax, label="# points per pixel")
     plt.tight_layout()
     if plot_name is not None:
@@ -170,7 +170,7 @@ def plot_poca_points_hist2d(poca_points: Tensor, voi: Volume, dim: int = 2) -> N
     ax.set_xlabel(labels[dims[0]] + " [{}]".format(d_unit))
     ax.set_ylabel(labels[dims[1]] + " [{}]".format(d_unit))
 
-    cbar_ax = fig.add_axes([1.01, 0.15, 0.05, 0.7])
+    cbar_ax = fig.add_axes(rect=(1.01, 0.15, 0.05, 0.7))
     fig.colorbar(im[3], cax=cbar_ax, label="# POCA points per pixel")
     ax.set_aspect("equal")
 
@@ -201,7 +201,7 @@ def plot_voxel_pred(pred: Tensor, dim: int, plot_name: Optional[str] = None) -> 
     ax.set_xlabel(xlabels[dim] + f" [{d_unit}]")
     ax.set_ylabel(ylabels[dim] + f" [{d_unit}]")
 
-    cbar_ax = fig.add_axes([1.0, 0.15, 0.05, 0.7])
+    cbar_ax = fig.add_axes(rect=(1.0, 0.15, 0.05, 0.7))
     fig.colorbar(im, cax=cbar_ax, label=" Average voxel density [a.u]")
     if plot_name is not None:
         plt.savefig(plot_name)

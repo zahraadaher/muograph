@@ -351,7 +351,7 @@ class VoxelPlotting:
             origin="lower",
             vmin=vmin,
             vmax=vmax,
-            extent=dim_mapping[dim]["extent"],
+            extent=dim_mapping[dim]["extent"],  # type: ignore
         )
 
         # Remove grid
@@ -439,7 +439,7 @@ class VoxelPlotting:
         ax_histy.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
 
         # Add colorbar
-        cbar_ax = fig.add_axes([0.95, 0.1, 0.03, 0.6])  # [left, bottom, width, height]
+        cbar_ax = fig.add_axes(rect=(0.95, 0.1, 0.03, 0.6))  # [left, bottom, width, height]
         cbar = fig.colorbar(im, cax=cbar_ax)  # Attach colorbar to the custom axis
         cbar.set_label(pred_label + " " + pred_unit, fontweight="bold")  # Colorbar label
 
@@ -677,7 +677,7 @@ class VoxelPlotting:
             axs[-i] = None
 
         # Add color bar
-        cbar_ax = fig.add_axes([1.01, 0.15, 0.05, 0.7])
+        cbar_ax = fig.add_axes(rect=(1.01, 0.15, 0.05, 0.7))
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label(pred_label + " " + pred_unit, fontweight="bold")  # Colorbar label
 
@@ -732,7 +732,7 @@ class VoxelPlotting:
         )
 
         # Plot predictions mean
-        mean = xyz_voxel_preds.mean().detach().cpu().numpy()
+        mean = xyz_voxel_preds.mean().detach().cpu().item()
         ax.axvline(x=mean, label=f"Mean = {mean:.3f}", color="red")
 
         # Highlight 1 sigma region

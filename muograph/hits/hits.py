@@ -347,7 +347,7 @@ class Hits:
         )
 
         # Add colorbar
-        cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+        cbar_ax = fig.add_axes(rect=(0.85, 0.15, 0.05, 0.7))
         fig.colorbar(h[3], cax=cbar_ax, label=f"# hits / {pixel_size**2:.0f} {d_unit}$^2$")
 
         # Save plot

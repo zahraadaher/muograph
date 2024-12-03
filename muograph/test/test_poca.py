@@ -42,7 +42,7 @@ def get_mst(hits_file: str) -> TrackingMST:
 def test_poca_loading() -> None:
     mst = get_mst(TEST_HIT_FILE)
 
-    output_dir = str(Path(muograph_path) / "../test_output/")
+    output_dir = str(Path(muograph_path) / "../output_test/")
 
     poca = POCA(tracking=mst, voi=VOI, output_dir=output_dir)
 
