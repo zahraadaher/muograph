@@ -39,6 +39,7 @@ class Tracking(AbsSave):
     is computed by comparing the values of theta computed from the generated hits (Hits.gen_hits) and
     from the smeared hits (Hits.reco_hits).
     """
+
     _tracks: Optional[Tensor] = None  # (mu, 3)
     _points: Optional[Tensor] = None  # (mu, 3)
     _theta: Optional[Tensor] = None  # (mu)
