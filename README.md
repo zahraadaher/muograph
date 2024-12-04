@@ -6,7 +6,7 @@
 ![logo](./images/muograph_logo.png)
 
 
-This repo provides a library for muon scattering tomography and muon transmission tomography data analysis. 
+This repository provides a library for muon scattering tomography and muon transmission tomography data analysis. 
 
 ## Overview
 
@@ -18,45 +18,79 @@ While curently being at a preliminary stage, this library is designed to be exte
 
 ![image](./images/mst_image_example.png)
 
-## Requierments
-
-The Python libraries required can be installed using [Conda](https://conda.io/projects/conda/en/latest/user-guide/getting-started.html), a powerful command line tool for package and environment managment.
-
-It can be installed following these [instructions](https://conda.io/projects/conda/en/latest/user-guide/install/index.html), based on your operating system.
-
-Simply run the following command:
-
-```bash
-cd MuographBeta/
-conda env create --file=environment.yml
-```
-
-You can then activate/deactivate the environment with:
-
-```bash
-conda activate muograph
-```
-
-```bash
-conda deactivate
-```
-
 ## Installation
 
-Now that the required libraries have been installed, the repository can be cloned:
+### As a dependency
+
+### For development
+
+Clone the repository locally:
 
 ```bash
-git clone https://github.com/MaximeLagrange/MuographBeta.git
+git clone git@github.com:MaximeLagrange/muograph.git
+cd muograph
 ```
 
-This repo Git Large File Storage ([LFS](https://git-lfs.com/)) to handle the data files that are too large for GitHub. To ensure that all LFS files are downloaded, run the following command inside the repository folder:
+For development usage, we use [`poetry`](https://python-poetry.org/docs/#installing-with-the-official-installer) to handle dependency installation:
 
 ```bash
-git lfs pull
+curl -sSL https://install.python-poetry.org | python3 -
 ```
+
+To get started, you need Poetry's bin directory in your `PATH` environment variable. Add  the export command to your shell's configuration file. For bash, Add it to the `~/.bashrc` file. For zsh, add it to the `~/.zshrc` file.
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+then reload the configuration file:
+
+```bash
+source ~/.bashrc # or source ~/.zshrc
+```
+
+Poetry should now be accessible:
+
+```bash
+poetry self update
+```
+
+Muograph requires `python >= 3.10`. This can be installed with e.g [`pyenv`](https://github.com/pyenv/pyenv).
+
+```bash
+curl https://pyenv.run | bash
+pyenv update
+pyenv install 3.10
+pyenv local 3.10
+```
+
+Install the dependencies:
+
+```bash
+poetry install
+poetry self add poetry-plugin-export
+poetry config warnings.export false
+poetry run pre-commit install
+```
+
+Finally, make sure everything is working as expected by running the tests:
+
+```bash
+poetry run pytest muograph/test/
+```
+
+For those unfamiliar with poetry, basically just prepend commands with `poetry run` to use the stuff installed within the local environment, e.g. `poetry run jupyter notebook` to start a jupyter notebook server. This local environment is basically a python virtual environment. To correctly set up the interpreter in your IDE, use `poetry run which python` to see the path to the correct python executable.
+
 
 ## Examples
 
-A few examples to introduce users to the package can be found in the `./example/` folder.
+A few examples to introduce users to the package can be found in the `tutorial/` folder. They are provied as Jupyter notebooks:
 
-![example](./images/examples_preview.png)
+ - `00_Volume_of_interest.ipynb` shows how to define a voxelized volume of interest, later used by the reconstruction algorithms.
+ - `01_Hits.ipynb` demonstrates how to load muon hits, and simulate detector spatial resolution and/or efficiency effects.
+ - `02_Tracking.ipynb` shows how to convert muon hits into muon tracks usable for image reconstruction purposes.
+ - `03_Tracking_muon_Scattering_tomography.ipynb` combines incoming and ougoing tracks to compute features relevant to muon scatering tomography.
+ - `04_POCA.ipynb` takes the user through the computation of voxel-wise density predictions based on the Point of Closest Approach.
+ - `05_Binned_clustered_algorithm.ipynb` demonstrates the Binned Clustered Algorithm, with and without muon momentum information.
+ - `06_Angle_statistical_reconstruction.ipynb` shows the Angle Statistical Reconstruction algorithm, with and without muon momentum information.
+
