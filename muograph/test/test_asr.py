@@ -11,7 +11,7 @@ import math
 
 # Test data file path
 TEST_HIT_FILE = os.path.dirname(__file__) + "/../data/iron_barrel/barrel_and_cubes_scattering.csv"
-VOI = Volume(position=(0, 0, -1200), dimension=(1000, 600, 600), voxel_width=20)
+VOI = Volume(position=(0, 0, -1200), dimension=(1000, 600, 600), voxel_width=50)
 OUPUT_DIR = str(Path(muograph_path) / "../output_test/")
 
 
@@ -52,8 +52,8 @@ def test_asr_predictions() -> None:
         "use_p": False,
     }
 
-    n_poca_uranium_x_region = asr.xyz_voxel_pred[23:28].float().mean()
-    n_poca_empty_x_region = asr.xyz_voxel_pred[-5:].float().mean()
+    n_poca_uranium_x_region = asr.xyz_voxel_pred[14:16].float().mean()
+    n_poca_empty_x_region = asr.xyz_voxel_pred[-3:].float().mean()
 
     assert (
         n_poca_uranium_x_region > n_poca_empty_x_region
