@@ -30,6 +30,7 @@ class Hits:
     r"""
     A class to handle and process muon hit data from a CSV file.
     """
+
     # Muon hits
     _gen_hits = None  # (3, n_plane, mu)
     _reco_hits = None  # (3, n_plane, mu)

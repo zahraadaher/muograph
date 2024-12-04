@@ -1,5 +1,6 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
+[![CI-tests](https://github.com/MaximeLagrange/muograph/actions/workflows/tests.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
+<!-- [![CI-lints](https://github.com/GilesStrong/tomopt/actions/workflows/linting.yml/badge.svg)](https://github.com/GilesStrong/tomopt/actions) -->
 
 # MuographBeta: muon tomography library
 

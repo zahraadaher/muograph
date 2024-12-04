@@ -18,6 +18,7 @@ class AbsVoxelInferer(
     r"""
     Class used for handling the computation and plotting of voxel-wise scattering density predictions
     """
+
     _xyz_voxel_pred: Optional[Tensor] = None  # (Nx, Ny, Nz)
     _recompute_preds = True
 
