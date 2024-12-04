@@ -18,8 +18,6 @@ While curently being at a preliminary stage, this library is designed to be exte
 
 <p align="center">
   <img src="./images/mst_image_example.png" />
-
-<!-- ![image](./images/mst_image_example.png) -->
 </p>
 
 ## Installation
