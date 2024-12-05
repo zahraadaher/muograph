@@ -2,7 +2,6 @@
 name = "muograph"
 version = "0.1.6"
 description = "Muon tomography data analysis library"
-authors = ["Maxime Lagrange"]
 readme = "README.md"
 license = "AGPL-3.0-only"
 authors = ["Maxime Lagrange <muograph.ml@gmail.com>"]
