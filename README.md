@@ -2,7 +2,7 @@
 [![CI-tests](https://github.com/MaximeLagrange/muograph/actions/workflows/test.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
 [![CI-lints](https://github.com/MaximeLagrange/muograph/actions/workflows/lint.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
 [![muograph python compatibility](https://img.shields.io/pypi/pyversions/muograph.svg)](https://pypi.python.org/pypi/muograph)
-
+[![muograph license](https://img.shields.io/pypi/l/muograph.svg)](https://pypi.python.org/pypi/muograph)
 
 # MuographBeta: muon tomography library
 
