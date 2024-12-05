@@ -1,6 +1,8 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![CI-tests](https://github.com/MaximeLagrange/muograph/actions/workflows/test.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
 [![CI-lints](https://github.com/MaximeLagrange/muograph/actions/workflows/lint.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
+<!-- [![muograph python compatibility](https://img.shields.io/pypi/pyversions/tomopt.svg)](https://pypi.python.org/pypi/tomopt) -->
+
 
 # MuographBeta: muon tomography library
 
@@ -18,8 +20,11 @@ Users can find ready to use scattering density algorihms as well as samples of s
 While curently being at a preliminary stage, this library is designed to be extended by users, whom are invited to implement their favorite reconstruction, material inference or image processing algorithms.
 
 <p align="center">
-  <img src="./images/muograph_example.png" />
+  <!-- <img src="./images/muograph_example.png" /> -->
+  <img src="https://drive.google.com/uc?id=1q9U8deWVMnosdzIF1HyHDbokotSrpcs_" />
 </p>
+<!--  -->
+<!-- full link https://drive.google.com/file/d/1q9U8deWVMnosdzIF1HyHDbokotSrpcs_/view?usp=sharing -->
 
 ## Installation
 
@@ -85,9 +90,9 @@ poetry run pytest muograph/test/
 For those unfamiliar with poetry, basically just prepend commands with `poetry run` to use the stuff installed within the local environment, e.g. `poetry run jupyter notebook` to start a jupyter notebook server. This local environment is basically a python virtual environment. To correctly set up the interpreter in your IDE, use `poetry run which python` to see the path to the correct python executable.
 
 
-## Examples
+## Tutorials
 
-A few examples to introduce users to the package can be found in the `tutorial/` folder. They are provied as Jupyter notebooks:
+A few tutorials to introduce users to the package can be found in the `tutorial/` folder. They are provied as Jupyter notebooks:
 
  - `00_Volume_of_interest.ipynb` shows how to define a voxelized volume of interest, later used by the reconstruction algorithms.
  - `01_Hits.ipynb` demonstrates how to load muon hits, and simulate detector spatial resolution and/or efficiency effects.
@@ -97,3 +102,6 @@ A few examples to introduce users to the package can be found in the `tutorial/`
  - `05_Binned_clustered_algorithm.ipynb` demonstrates the Binned Clustered Algorithm, with and without muon momentum information.
  - `06_Angle_statistical_reconstruction.ipynb` shows the Angle Statistical Reconstruction algorithm, with and without muon momentum information.
 
+## Examples
+
+For 
