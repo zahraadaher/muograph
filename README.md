@@ -6,7 +6,8 @@
 
 # MuographBeta: muon tomography library
 
-![logo](https://drive.google.com/uc?1VbnNRMNspKIhvf1e5_U_4oZadRiaLM_M=logo
+![logo](https://drive.google.com/uc?id=1VbnNRMNspKIhvf1e5_U_4oZadRiaLM_M)
+
 
 This repository provides a library for muon scattering tomography and muon transmission tomography data analysis. 
 
