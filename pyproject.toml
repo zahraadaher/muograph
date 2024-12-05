@@ -13,6 +13,8 @@ classifiers = [
         "Intended Audience :: Science/Research",
         "Natural Language :: English",
 ]
+homepage = "https://github.com/MaximeLagrange/muograph"
+
 
 [tool.poetry.dependencies]
 python = "^3.10"
