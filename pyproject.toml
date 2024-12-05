@@ -5,9 +5,7 @@ description = "Muon tomography data analysis library"
 authors = ["Maxime Lagrange"]
 readme = "README.md"
 license = "AGPL-3.0-only"
-authors = [
-    "Maxime Lagrange <muograph.ml@gmail.com>",
-]
+authors = ["Maxime Lagrange <muograph.ml@gmail.com>"]
 keywords = ["physics", "science", "statistics", "muon tomography", "detector simulation"]
 include = ["muograph/py.typed"]
 classifiers = [
