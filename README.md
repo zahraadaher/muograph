@@ -6,8 +6,7 @@
 
 # MuographBeta: muon tomography library
 
-![logo](./images/muograph_logo.png)
-
+![logo](https://drive.google.com/uc?1VbnNRMNspKIhvf1e5_U_4oZadRiaLM_M=logo
 
 This repository provides a library for muon scattering tomography and muon transmission tomography data analysis. 
 
@@ -21,10 +20,8 @@ While curently being at a preliminary stage, this library is designed to be exte
 
 <p align="center">
   <!-- <img src="./images/muograph_example.png" /> -->
-  <img src="https://drive.google.com/uc?id=1q9U8deWVMnosdzIF1HyHDbokotSrpcs_" />
+  <img src="https://drive.google.com/uc?id=1m1e9KE8Ei6cQRzPsp-W47o0uZvFO0Nb3" />
 </p>
-<!--  -->
-<!-- full link https://drive.google.com/file/d/1q9U8deWVMnosdzIF1HyHDbokotSrpcs_/view?usp=sharing -->
 
 ## Installation
 
@@ -102,6 +99,3 @@ A few tutorials to introduce users to the package can be found in the `tutorial/
  - `05_Binned_clustered_algorithm.ipynb` demonstrates the Binned Clustered Algorithm, with and without muon momentum information.
  - `06_Angle_statistical_reconstruction.ipynb` shows the Angle Statistical Reconstruction algorithm, with and without muon momentum information.
 
-## Examples
-
-For 
