@@ -1,11 +1,21 @@
 [tool.poetry]
 name = "muograph"
-version = "0.1.5"
+version = "0.1.6"
 description = "Muon tomography data analysis library"
 authors = ["Maxime Lagrange"]
 readme = "README.md"
-keywords = ["physics", "science", "statistics", "tomography"]
+license = "AGPL-3.0-only"
+authors = [
+    "Maxime Lagrange <muograph.ml@gmail.com>",
+]
+keywords = ["physics", "science", "statistics", "muon tomography", "detector simulation"]
 include = ["muograph/py.typed"]
+classifiers = [
+        "Programming Language :: Python :: 3.10",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "Natural Language :: English",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
