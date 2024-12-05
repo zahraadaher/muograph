@@ -1,7 +1,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![CI-tests](https://github.com/MaximeLagrange/muograph/actions/workflows/test.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
 [![CI-lints](https://github.com/MaximeLagrange/muograph/actions/workflows/lint.yml/badge.svg)](https://github.com/MaximeLagrange/muograph/actions)
-<!-- [![muograph python compatibility](https://img.shields.io/pypi/pyversions/tomopt.svg)](https://pypi.python.org/pypi/tomopt) -->
+[![muograph python compatibility](https://img.shields.io/pypi/pyversions/muograph.svg)](https://pypi.python.org/pypi/muograph)
 
 
 # MuographBeta: muon tomography library
@@ -20,7 +20,6 @@ Users can find ready to use scattering density algorihms as well as samples of s
 While curently being at a preliminary stage, this library is designed to be extended by users, whom are invited to implement their favorite reconstruction, material inference or image processing algorithms.
 
 <p align="center">
-  <!-- <img src="./images/muograph_example.png" /> -->
   <img src="https://drive.google.com/uc?id=1m1e9KE8Ei6cQRzPsp-W47o0uZvFO0Nb3" />
 </p>
 
