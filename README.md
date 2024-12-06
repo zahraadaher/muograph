@@ -61,7 +61,7 @@ For development usage, we use [`poetry`](https://python-poetry.org/docs/#install
 curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-To get started, you need Poetry's bin directory in your `PATH` environment variable. Add  the export command to your shell's configuration file. For bash, Add it to the `~/.bashrc` file. For zsh, add it to the `~/.zshrc` file.
+To get started, you need Poetry's bin directory in your `PATH` environment variable. Add  the export command to your shell's configuration file. For bash, add it to the `~/.bashrc` file. For zsh, add it to the `~/.zshrc` file.
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
