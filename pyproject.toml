@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "muograph"
-version = "0.1.8"
+version = "0.1.9"
 description = "Muon tomography data analysis library"
 readme = "README.md"
 license = "AGPL-3.0-only"
