@@ -5,7 +5,7 @@
 [![muograph license](https://img.shields.io/pypi/l/muograph.svg)](https://pypi.python.org/pypi/muograph)
 [![pypi muograph version](https://img.shields.io/pypi/v/muograph.svg)](https://pypi.python.org/pypi/muograph)
 
-# MuographBeta: muon tomography library
+# Muograph: muon tomography library
 
 ![logo](https://drive.google.com/uc?id=1VbnNRMNspKIhvf1e5_U_4oZadRiaLM_M)
 
@@ -18,7 +18,7 @@ As a disclaimer, this library is more of an aggregate of muon tomography algorit
 
 Users can find ready to use scattering density algorihms as well as samples of simulated data.
 
-While curently being at a preliminary stage, this library is designed to be extended by users, whom are invited to implement their favorite reconstruction, material inference or image processing algorithms.
+While currently being at a preliminary stage, this library is designed to be extended by users, whom are invited to implement their favorite reconstruction, material inference or image processing algorithms.
 
 If you are interested in using this library seriously, please contact us; we would love to hear if you have a specific use-case you wish to work on.
 
