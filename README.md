@@ -118,7 +118,16 @@ A few tutorials to introduce users to the package can be found in the `tutorial/
  - `05_Binned_clustered_algorithm.ipynb` demonstrates the Binned Clustered Algorithm, with and without muon momentum information.
  - `06_Angle_statistical_reconstruction.ipynb` shows the Angle Statistical Reconstruction algorithm, with and without muon momentum information.
 
+You can run the tutorials using poetry command:
+
 ```bash
 poetry run jupyter notebook muograph/tutorials/05_Binned_clustered_algorithm.ipynb
 ```
 
+## Examples
+
+More advanced examples are provided in the `muograph/examples`:
+
+```bash
+poetry run jupyter notebook muograph/examples/00_scattering_small_size_statue.ipynb
+```
