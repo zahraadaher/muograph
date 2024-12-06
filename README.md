@@ -28,6 +28,24 @@ While curently being at a preliminary stage, this library is designed to be exte
 
 ### As a dependency
 
+For a dependency usage, `muograph` can be instaled with `pip`:
+
+```bash
+pip install muograph
+```
+
+Make sure everythings works by running:
+
+```bash
+pytest path_to_muograph/test
+```
+
+You can check the location where muograph is installed:
+
+```bash
+pip show muograph
+```
+
 ### For development
 
 Clone the repository locally:
@@ -99,4 +117,8 @@ A few tutorials to introduce users to the package can be found in the `tutorial/
  - `04_POCA.ipynb` takes the user through the computation of voxel-wise density predictions based on the Point of Closest Approach.
  - `05_Binned_clustered_algorithm.ipynb` demonstrates the Binned Clustered Algorithm, with and without muon momentum information.
  - `06_Angle_statistical_reconstruction.ipynb` shows the Angle Statistical Reconstruction algorithm, with and without muon momentum information.
+
+```bash
+poetry run jupyter notebook muograph/tutorials/05_Binned_clustered_algorithm.ipynb
+```
 
