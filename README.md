@@ -10,7 +10,7 @@
 ![logo](https://drive.google.com/uc?id=1VbnNRMNspKIhvf1e5_U_4oZadRiaLM_M)
 
 
-This repository provides a library for muon scattering tomography and muon transmission tomography data analysis. 
+This repository provides a library for muon scattering tomography and muon transmission tomography data analysis.
 
 ## Overview
 
@@ -19,6 +19,8 @@ As a disclaimer, this library is more of an aggregate of muon tomography algorit
 Users can find ready to use scattering density algorihms as well as samples of simulated data.
 
 While curently being at a preliminary stage, this library is designed to be extended by users, whom are invited to implement their favorite reconstruction, material inference or image processing algorithms.
+
+If you are interested in using this library seriously, please contact us; we would love to hear if you have a specific use-case you wish to work on.
 
 <p align="center">
   <img src="https://drive.google.com/uc?id=1m1e9KE8Ei6cQRzPsp-W47o0uZvFO0Nb3" />
