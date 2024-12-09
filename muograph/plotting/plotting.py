@@ -1,7 +1,7 @@
 import matplotlib
 import matplotlib.pyplot as plt
 from torch import Tensor
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 import numpy as np
 
 from muograph.volume.volume import Volume
@@ -278,7 +278,7 @@ def get_n_bins_xy_from_xy_span(dx: float, dy: float, n_bins: int = n_bins_2D) ->
 
 
 def plot_hist(
-    data_1D: Tensor,
+    data_1D: Union[Tensor, np.ndarray],
     ylabel: Optional[str] = None,
     xlabel: Optional[str] = None,
     logx: bool = False,
@@ -307,7 +307,10 @@ def plot_hist(
     )
 
     fig, ax = plt.subplots()
-    sns.histplot(data=data_1D.detach().cpu().detach().numpy(), alpha=0.4, bins=n_bins, ax=ax, log_scale=(logx, logy), color="blue")
+    if isinstance(data_1D, Tensor):
+        data_1D.detach().cpu().detach().numpy()
+
+    sns.histplot(data=data_1D, alpha=0.4, bins=n_bins, ax=ax, log_scale=(logx, logy), color="blue")
 
     xlabel = "x" if xlabel is None else xlabel
     ylabel = "frequency [a.u]" if ylabel is None else ylabel
