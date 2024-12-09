@@ -30,9 +30,12 @@ If you are interested in using this library seriously, please contact us; we wou
 
 ### As a dependency
 
-For a dependency usage, `muograph` can be instaled with `pip`:
+For a dependency usage, `muograph` can be instaled with `pip` within a [Conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) environment:
+
 
 ```bash
+conda create -n muograph python=3.10
+conda activate muograph
 pip install muograph
 ```
 
