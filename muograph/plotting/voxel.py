@@ -574,9 +574,9 @@ class VoxelPlotting:
         # Mapping for dimension-specific attributes
         dim_mapping = {
             2: {
-                "slice_fn": lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2) / nslice_per_plot,
-                "z_min_fn": lambda v, s: v.voxel_edges[0, 0, s, 0, 2],
-                "z_max_fn": lambda v, s: v.voxel_edges[0, 0, s + nslice_per_plot - 1, 1, 2],
+                "slice_fn": lambda p, s: p[:, :, s : s + nslice_per_plot].sum(dim=2).detach().cpu().numpy() / nslice_per_plot,
+                "z_min_fn": lambda v, s: v.voxel_edges[0, 0, s, 0, 2].detach().cpu().numpy(),
+                "z_max_fn": lambda v, s: v.voxel_edges[0, 0, s + nslice_per_plot - 1, 1, 2].detach().cpu().numpy(),
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 0],
                     voi.voxel_edges[-1, 0, 0, 1, 0],
@@ -591,9 +591,9 @@ class VoxelPlotting:
                 "plane": "XY",
             },
             1: {
-                "slice_fn": lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1) / nslice_per_plot,
-                "z_min_fn": lambda v, s: v.voxel_edges[0, s, 0, 0, 1],
-                "z_max_fn": lambda v, s: v.voxel_edges[0, s + nslice_per_plot - 1, 0, 1, 1],
+                "slice_fn": lambda p, s: p[:, s : s + nslice_per_plot].sum(dim=1).detach().cpu().numpy() / nslice_per_plot,
+                "z_min_fn": lambda v, s: v.voxel_edges[0, s, 0, 0, 1].detach().cpu().numpy(),
+                "z_max_fn": lambda v, s: v.voxel_edges[0, s + nslice_per_plot - 1, 0, 1, 1].detach().cpu().numpy(),
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 0],
                     voi.voxel_edges[-1, 0, 0, 1, 0],
@@ -608,9 +608,9 @@ class VoxelPlotting:
                 "plane": "XZ",
             },
             0: {
-                "slice_fn": lambda p, s: p[s : s + nslice_per_plot].sum(dim=0) / nslice_per_plot,
-                "z_min_fn": lambda v, s: v.voxel_edges[s, 0, 0, 0, 0],
-                "z_max_fn": lambda v, s: v.voxel_edges[s + nslice_per_plot - 1, 0, 0, 1, 0],
+                "slice_fn": lambda p, s: p[s : s + nslice_per_plot].sum(dim=0).detach().cpu().numpy() / nslice_per_plot,
+                "z_min_fn": lambda v, s: v.voxel_edges[s, 0, 0, 0, 0].detach().cpu().numpy(),
+                "z_max_fn": lambda v, s: v.voxel_edges[s + nslice_per_plot - 1, 0, 0, 1, 0].detach().cpu().numpy(),
                 "left_right_extent": (
                     voi.voxel_edges[0, 0, 0, 0, 1],
                     voi.voxel_edges[0, -1, 0, 1, 1],
