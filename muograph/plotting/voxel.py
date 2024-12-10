@@ -1,7 +1,7 @@
 import matplotlib.axis
 import torch
 from torch import Tensor
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Dict
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -894,3 +894,67 @@ class VoxelPlotting:
                 xmin=extent_x[0],
                 xmax=extent_x[1],
             )
+
+    @staticmethod
+    def plot_3D_to_1D(data_3D: Tensor, voi: Optional[Volume] = None, dim: int = 2, ylabel: str = "value") -> None:
+        """
+        Plots a 1D projection of 3D tensor data along a specified dimension.
+
+        Args:
+            data_3D (Tensor): The 3D tensor containing the data to plot.
+            voi (Optional[Volume]): Volume of interest, defining voxel centers. If None, a default is created.
+            dim (int): The dimension to project onto (0, 1, or 2).
+            ylabel (str): Label for the Y-axis.
+
+        Raises:
+            ValueError: If `dim` is not in {0, 1, 2}.
+        """
+
+        configure_plot_theme(font)
+
+        if voi is None:
+            nx, ny, nz = data_3D.size()
+            voi = Volume(position=(0.0, 0.0, 0.0), dimension=(nx, ny, nz), voxel_width=1)
+
+        if dim not in {0, 1, 2}:
+            raise ValueError(f"Invalid dimension {dim}. Must be one of 0, 1, or 2.")
+
+        dim_mapping: Dict[int, Dict[str, Union[str, np.ndarray]]] = {
+            0: {
+                "x_pos": voi.voxel_centers[:, 0, 0, 0].detach().cpu().numpy(),
+                "data": data_3D.mean(dim=2).mean(dim=1).detach().cpu().numpy(),
+                "xlabel": "x [" + d_unit + "]",
+            },
+            1: {
+                "x_pos": voi.voxel_centers[0, :, 0, 1].detach().cpu().numpy(),
+                "data": data_3D.mean(dim=2).mean(dim=0).detach().cpu().numpy(),
+                "xlabel": "y [" + d_unit + "]",
+            },
+            2: {
+                "x_pos": voi.voxel_centers[0, 0, :, 2].detach().cpu().numpy(),
+                "data": data_3D.mean(dim=0).mean(dim=0).detach().cpu().numpy(),
+                "xlabel": "z [" + d_unit + "]",
+            },
+        }
+
+        fig, ax = plt.subplots(figsize=hist_figsize)
+
+        # Plot 1D data
+        ax.scatter(
+            dim_mapping[dim]["x_pos"],
+            dim_mapping[dim]["data"],
+            marker="+",
+            s=50,
+            alpha=0.8,
+        )
+
+        # Plot mean
+        mean = np.mean(dim_mapping[dim]["data"])  # type: ignore
+        plt.axhline(y=mean, label=f"Mean = {mean:.3f}", color="red", alpha=0.8)  # type: ignore
+
+        # Axis label
+        ax.set_xlabel(dim_mapping[dim]["xlabel"], fontweight="bold")  # type: ignore
+        ax.set_ylabel(ylabel, fontweight="bold")
+
+        ax.legend()
+        plt.show()

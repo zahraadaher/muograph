@@ -18,7 +18,7 @@ labelsize: int = 16
 titlesize: int = 20
 
 fontweigh: str = "normal"
-font = {"weight": "normal", "size": fontsize, "family": "sans-serif"}
+font: Dict[str, Union[str, int]] = {"weight": "normal", "size": fontsize, "family": "sans-serif"}
 
 # Matplotlib colormaps
 cmap: str = "jet"
