@@ -1,7 +1,7 @@
 import matplotlib.axis
 import torch
 from torch import Tensor
-from typing import Tuple, Optional, Union, Dict
+from typing import Tuple, Optional, Union, Dict, List
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,18 +9,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 
 from muograph.volume.volume import Volume
-from muograph.plotting.params import (
-    font,
-    d_unit,
-    scale,
-    cmap,
-    fontsize,
-    hist_figsize,
-    n_bins,
-    labelsize,
-    titlesize,
-    configure_plot_theme,
-)
+from muograph.plotting.params import font, d_unit, scale, cmap, fontsize, hist_figsize, n_bins, labelsize, titlesize, configure_plot_theme, colors
 
 
 class VoxelPlotting:
@@ -897,7 +886,14 @@ class VoxelPlotting:
 
     @staticmethod
     def plot_3D_to_1D(
-        data_3D: Tensor, voi: Optional[Volume] = None, dim: int = 2, ylabel: str = "value", figname: Optional[str] = None, title: Optional[str] = None
+        data_3D: Union[Tensor, List[Tensor]],
+        data_labels: Optional[List[str]] = None,
+        voi: Optional[Volume] = None,
+        dim: int = 2,
+        ylabel: str = "value",
+        figname: Optional[str] = None,
+        title: Optional[str] = None,
+        plot_mean: bool = False,
     ) -> None:
         """
         Plots a 1D projection of 3D tensor data along a specified dimension.
@@ -912,50 +908,64 @@ class VoxelPlotting:
             ValueError: If `dim` is not in {0, 1, 2}.
         """
 
+        # Set theme
         configure_plot_theme(font)
 
+        fig, ax = plt.subplots(figsize=hist_figsize)
+
         if voi is None:
-            nx, ny, nz = data_3D.size()
+            nx, ny, nz = data_3D.size() if isinstance(data_3D, Tensor) else data_3D[0].size()
             voi = Volume(position=(0.0, 0.0, 0.0), dimension=(nx, ny, nz), voxel_width=1)
 
         if dim not in {0, 1, 2}:
             raise ValueError(f"Invalid dimension {dim}. Must be one of 0, 1, or 2.")
 
-        dim_mapping: Dict[int, Dict[str, Union[str, np.ndarray]]] = {
-            0: {
-                "x_pos": voi.voxel_centers[:, 0, 0, 0].detach().cpu().numpy(),
-                "data": data_3D.mean(dim=2).mean(dim=1).detach().cpu().numpy(),
-                "xlabel": "x [" + d_unit + "]",
-            },
-            1: {
-                "x_pos": voi.voxel_centers[0, :, 0, 1].detach().cpu().numpy(),
-                "data": data_3D.mean(dim=2).mean(dim=0).detach().cpu().numpy(),
-                "xlabel": "y [" + d_unit + "]",
-            },
-            2: {
-                "x_pos": voi.voxel_centers[0, 0, :, 2].detach().cpu().numpy(),
-                "data": data_3D.mean(dim=0).mean(dim=0).detach().cpu().numpy(),
-                "xlabel": "z [" + d_unit + "]",
-            },
-        }
+        def plot_data(ax: matplotlib.axes._axes.Axes, voi: Volume, data: Tensor, color: str = "blue", data_label: Optional[str] = None) -> None:
+            dim_mapping: Dict[int, Dict[str, Union[str, np.ndarray]]] = {
+                0: {
+                    "x_pos": voi.voxel_centers[:, 0, 0, 0].detach().cpu().numpy(),
+                    "data": data.mean(dim=2).mean(dim=1).detach().cpu().numpy(),
+                },
+                1: {
+                    "x_pos": voi.voxel_centers[0, :, 0, 1].detach().cpu().numpy(),
+                    "data": data.mean(dim=2).mean(dim=0).detach().cpu().numpy(),
+                },
+                2: {
+                    "x_pos": voi.voxel_centers[0, 0, :, 2].detach().cpu().numpy(),
+                    "data": data.mean(dim=0).mean(dim=0).detach().cpu().numpy(),
+                },
+            }
 
-        fig, ax = plt.subplots(figsize=hist_figsize)
+            mean = np.mean(dim_mapping[dim]["data"])  # type: ignore
+            mean_label = f"Mean {data_label} = {mean:.3f}" if data_label is not None else f"Mean = {mean:.3f}"
 
-        # Plot 1D data
-        ax.scatter(
-            dim_mapping[dim]["x_pos"],
-            dim_mapping[dim]["data"],
-            marker="+",
-            s=50,
-            alpha=0.8,
-        )
+            # Plot 1D data
+            ax.scatter(
+                dim_mapping[dim]["x_pos"],
+                dim_mapping[dim]["data"],
+                marker="+",
+                s=50,
+                label=mean_label,
+                alpha=0.8,
+                color=color,
+            )
 
-        # Plot mean
-        mean = np.mean(dim_mapping[dim]["data"])  # type: ignore
-        plt.axhline(y=mean, label=f"Mean = {mean:.3f}", color="red", alpha=0.8)  # type: ignore
+            # Plot mean
+            if plot_mean:
+                plt.axhline(y=mean, color=color, alpha=0.4)  # type: ignore
+
+        if isinstance(data_3D, list):
+            for i, data in enumerate(data_3D):
+                data_label = data_labels[i] if data_labels is not None else None
+                plot_data(ax=ax, voi=voi, data=data, color=colors[i], data_label=data_label)
+
+        elif isinstance(data_3D, Tensor):
+            plot_data(ax=ax, voi=voi, data=data_3D, color=colors[0])
+
+        xlabel: Dict[int, str] = {0: "x [" + d_unit + "]", 1: "y [" + d_unit + "]", 2: "z [" + d_unit + "]"}
 
         # Axis label
-        ax.set_xlabel(dim_mapping[dim]["xlabel"], fontweight="bold")  # type: ignore
+        ax.set_xlabel(xlabel[dim], fontweight="bold")  # type: ignore
         ax.set_ylabel(ylabel, fontweight="bold")
 
         # Title

@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, List
 import seaborn as sns
 import matplotlib
 
@@ -22,6 +22,9 @@ font: Dict[str, Union[str, int]] = {"weight": "normal", "size": fontsize, "famil
 
 # Matplotlib colormaps
 cmap: str = "jet"
+
+# Plot colors
+colors: List[str] = list(matplotlib.colors.TABLEAU_COLORS.values())  # type: ignore
 
 # Histogram XY ratio
 xy_golden_ratio: float = 1.5
