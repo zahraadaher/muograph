@@ -896,7 +896,9 @@ class VoxelPlotting:
             )
 
     @staticmethod
-    def plot_3D_to_1D(data_3D: Tensor, voi: Optional[Volume] = None, dim: int = 2, ylabel: str = "value") -> None:
+    def plot_3D_to_1D(
+        data_3D: Tensor, voi: Optional[Volume] = None, dim: int = 2, ylabel: str = "value", figname: Optional[str] = None, title: Optional[str] = None
+    ) -> None:
         """
         Plots a 1D projection of 3D tensor data along a specified dimension.
 
@@ -956,5 +958,14 @@ class VoxelPlotting:
         ax.set_xlabel(dim_mapping[dim]["xlabel"], fontweight="bold")  # type: ignore
         ax.set_ylabel(ylabel, fontweight="bold")
 
+        # Title
+        if title is not None:
+            fig.suptitle(title, fontweight="bold")
+
+        # Legend
         ax.legend()
+
+        # Save figure
+        if figname is not None:
+            plt.savefig(figname, bbox_inches="tight")
         plt.show()
