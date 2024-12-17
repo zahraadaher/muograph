@@ -39,7 +39,7 @@ class POCA(AbsSave, VoxelPlotting):
     _poca_indices: Optional[Tensor] = None  # (mu, 3)
     _mask_in_voi: Optional[Tensor] = None  # (mu)
 
-    _batch_size: int = 1024
+    _batch_size: int = 2048
 
     _vars_to_save = [
         "poca_points",
