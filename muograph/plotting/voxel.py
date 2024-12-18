@@ -183,7 +183,7 @@ class VoxelPlotting:
         voi: Volume,
         xyz_voxel_preds: Tensor,
         xyz_voxel_pred_uncs: Optional[Tensor] = None,
-        voi_slice: Union[int, Tuple[int, int]] = 0,
+        voi_slice: Optional[Tuple[int, int]] = None,
         dim: int = 2,
         figname: Optional[str] = None,
         reverse: bool = False,
@@ -239,6 +239,10 @@ class VoxelPlotting:
 
         # Define colormap
         cmap = cmap + "_r" if reverse else cmap
+
+        if voi_slice is None:
+            voi_slice = (0, voi.n_vox_xyz[dim] - 1)
+            print(voi_slice)
 
         # Get 2D slice from 3D xyz voxel-wise predictions
         xy_data = VoxelPlotting.get_2D_slice_from_3D(
@@ -504,7 +508,7 @@ class VoxelPlotting:
 
         # The range of volume slice to plot
         if voi_slice is None:
-            voi_slice = (0, voi.n_vox_xyz[dim])
+            voi_slice = (0, voi.n_vox_xyz[dim] - 1)
 
         # The number of volume slice to take into account
         nplots = int(voi_slice[1] - voi_slice[0])
@@ -937,7 +941,7 @@ class VoxelPlotting:
             }
 
             mean = np.mean(dim_mapping[dim]["data"])  # type: ignore
-            mean_label = f"Mean {data_label} = {mean:.3f}" if data_label is not None else f"Mean = {mean:.3f}"
+            label = data_label if data_label is not None else f"Mean = {mean:.3f}"
 
             # Plot 1D data
             ax.scatter(
@@ -945,14 +949,10 @@ class VoxelPlotting:
                 dim_mapping[dim]["data"],
                 marker="+",
                 s=50,
-                label=mean_label,
+                label=label,
                 alpha=0.8,
                 color=color,
             )
-
-            # Plot mean
-            if plot_mean:
-                plt.axhline(y=mean, color=color, alpha=0.4)  # type: ignore
 
         if isinstance(data_3D, list):
             for i, data in enumerate(data_3D):
@@ -973,9 +973,12 @@ class VoxelPlotting:
             fig.suptitle(title, fontweight="bold")
 
         # Legend
-        ax.legend()
+        if plot_mean:
+            ax.legend(bbox_to_anchor=(1.0, 0.7))
+        else:
+            ax.legend()
 
         # Save figure
         if figname is not None:
-            plt.savefig(figname, bbox_inches="tight")
+            plt.savefig(figname + "_" + xlabel[dim][0], bbox_inches="tight")
         plt.show()
