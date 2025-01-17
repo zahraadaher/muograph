@@ -284,6 +284,7 @@ def plot_hist(
     logx: bool = False,
     logy: bool = False,
     figname: Optional[str] = None,
+    title: Optional[str] = None,
     n_bins: int = n_bins,
     range: Optional[Tuple] = None,
 ) -> None:
@@ -318,6 +319,9 @@ def plot_hist(
 
     ax.set_xlabel(xlabel, fontweight="bold", fontsize=font["size"])
     ax.set_ylabel(ylabel, fontweight="bold", fontsize=font["size"])
+
+    if title is not None:
+        ax.set_title(title, fontweight="bold", fontsize=font["size"])
 
     if figname is not None:
         plt.savefig(figname, bbox_inches="tight")
