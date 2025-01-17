@@ -188,7 +188,7 @@ class VoxelPlotting:
         figname: Optional[str] = None,
         reverse: bool = False,
         pred_label: str = "Scattering density",
-        fig_suptitle: str = "Voxels predictions",
+        fig_suptitle: Optional[str] = None,
         pred_unit: str = "[a.u]",
         scale: float = 7.0,
         cmap: str = cmap,
@@ -215,6 +215,7 @@ class VoxelPlotting:
             Must be 0, 1, or 2 corresponding to x, y, or z axes respectively.
             - figname (`Optional[str]`): If provided, saves the plot to the given file name, by default None.
             - reverse  (`bool`) Whether to reverse the colormap, by default False.
+            - fig_suptitle (`str`): Title for the figure, by default None.
             - pred_label (`Optional[str]`): Label for the prediction data, used in axis labels and title, by default 'Prediction'.
             - pred_unit (`Optional[str]`): Unit of the predictions to be displayed in the colorbar and axis labels, by default '[unit]'.
             - scale (`Optional[float]`): Scale factor for determining figure size, by default 1.0.
@@ -244,7 +245,6 @@ class VoxelPlotting:
 
         if voi_slice is None:
             voi_slice = (0, voi.n_vox_xyz[dim] - 1)
-            print(voi_slice)
 
         # Get 2D slice from 3D xyz voxel-wise predictions
         xy_data = VoxelPlotting.get_2D_slice_from_3D(
@@ -332,8 +332,17 @@ class VoxelPlotting:
 
         # Compute figure size based on the main axis size
         figsize = VoxelPlotting.get_fig_size(voi=voi, nrows=1, ncols=1, dims=dim_mapping[dim]["xy_dims"], scale=scale)  # type: ignore
+
         # Create the main figure
         fig, ax = plt.subplots(figsize=figsize)
+
+        # Set title
+        if fig_suptitle is None:
+            fig_suptitle = (
+                f"Voxel predictions\nfor volume slice {dim_mapping[dim]['dim_label']} "
+                + r"$\in$"
+                + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}"
+            )
 
         # Set 2D map contrast
         vmin = xy_data.ravel().min().detach().cpu().item() if v_min_max is None else v_min_max[0]
@@ -372,9 +381,7 @@ class VoxelPlotting:
 
             # Set figure title
             ax_histx.set_title(
-                f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} "
-                + r"$\in$"
-                + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
+                fig_suptitle,
                 fontweight="bold",
                 fontsize=titlesize,
                 y=1.05,
@@ -441,9 +448,7 @@ class VoxelPlotting:
         else:
             # Set figure title
             fig.suptitle(
-                f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} "
-                + r"$\in$"
-                + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
+                fig_suptitle,
                 fontweight="bold",
                 fontsize=titlesize,
             )
@@ -524,7 +529,7 @@ class VoxelPlotting:
             voi_slice = (0, voi.n_vox_xyz[dim] - 1)
 
         # The number of volume slice to take into account
-        nplots = int(voi_slice[1] - voi_slice[0])
+        nplots = int(voi_slice[1] - voi_slice[0]) + 1
 
         # If multiple slices per plot, adjust nplots accordingly
         if nslice_per_plot > 1:
@@ -702,7 +707,7 @@ class VoxelPlotting:
         # Save file
         if figname is not None:
             fig.savefig(
-                figname + "_" + dim_mapping[dim]["plane"] + "_view_slice",  # type: ignore
+                figname + "_" + dim_mapping[dim]["plane"] + "_view_slice.png",  # type: ignore
                 bbox_inches="tight",
             )
 
