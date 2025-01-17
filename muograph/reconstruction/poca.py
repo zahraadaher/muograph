@@ -19,7 +19,7 @@ from muograph.plotting.params import font
 
 
 r"""
-Provides class for copmuting POCA locations and POCA-based voxelized scattering density predictions
+Provides class for computing POCA locations and POCA-based voxelized scattering density predictions
 """
 
 
