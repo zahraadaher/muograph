@@ -285,6 +285,7 @@ def plot_hist(
     logy: bool = False,
     figname: Optional[str] = None,
     n_bins: int = n_bins,
+    range: Optional[Tuple] = None,
 ) -> None:
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -310,7 +311,7 @@ def plot_hist(
     if isinstance(data_1D, Tensor):
         data_1D.detach().cpu().detach().numpy()
 
-    sns.histplot(data=data_1D, alpha=0.4, bins=n_bins, ax=ax, log_scale=(logx, logy), color="blue")
+    sns.histplot(data=data_1D, alpha=0.4, bins=n_bins, ax=ax, log_scale=(logx, logy), color="blue", binrange=range)
 
     xlabel = "x" if xlabel is None else xlabel
     ylabel = "frequency [a.u]" if ylabel is None else ylabel
