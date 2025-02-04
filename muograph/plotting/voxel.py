@@ -183,7 +183,7 @@ class VoxelPlotting:
         voi: Volume,
         xyz_voxel_preds: Tensor,
         xyz_voxel_pred_uncs: Optional[Tensor] = None,
-        voi_slice: Union[int, Tuple[int, int]] = 0,
+        voi_slice: Optional[Tuple[int, int]] = None,
         dim: int = 2,
         figname: Optional[str] = None,
         reverse: bool = False,
@@ -192,6 +192,7 @@ class VoxelPlotting:
         pred_unit: str = "[a.u]",
         scale: float = 7.0,
         cmap: str = cmap,
+        proj1d: bool = True,
         reference_value: Optional[float] = None,
         v_min_max: Optional[Tuple[float, float]] = None,
     ) -> None:
@@ -218,6 +219,7 @@ class VoxelPlotting:
             - pred_unit (`Optional[str]`): Unit of the predictions to be displayed in the colorbar and axis labels, by default '[unit]'.
             - scale (`Optional[float]`): Scale factor for determining figure size, by default 1.0.
             - cmap (`Optional[str]`): Colormap to use for the voxel prediction plot, by default 'jet'.
+            - proj1d (`Optional[bool]`): Whether to project the 3D predictions onto 1D plots, by default True.
             - reference_value (`Optional[float]`): Optional reference value to display as a horizontal/vertical line in the averaged
             predictions plot, by default None.
              - v_min_max ('Optional[Tuple]'): Sets the min and max values of the 2D histogram.
@@ -239,6 +241,10 @@ class VoxelPlotting:
 
         # Define colormap
         cmap = cmap + "_r" if reverse else cmap
+
+        if voi_slice is None:
+            voi_slice = (0, voi.n_vox_xyz[dim] - 1)
+            print(voi_slice)
 
         # Get 2D slice from 3D xyz voxel-wise predictions
         xy_data = VoxelPlotting.get_2D_slice_from_3D(
@@ -351,90 +357,101 @@ class VoxelPlotting:
         ax.set_ylabel(f"Voxel ${dim_mapping[dim]['y_label']}$ location [mm]", fontweight="bold")
         ax.tick_params(axis="both", labelsize=labelsize)
 
-        divider = make_axes_locatable(ax)
-        ax_histx = divider.append_axes("top", 1.0, pad=0.1, sharex=ax)
-        ax_histy = divider.append_axes("right", 1.0, pad=0.1, sharey=ax)
+        if proj1d:
+            divider = make_axes_locatable(ax)
+            ax_histx = divider.append_axes("top", 1.0, pad=0.1, sharex=ax)
+            ax_histy = divider.append_axes("right", 1.0, pad=0.1, sharey=ax)
 
-        # Remove axis labels for histograms
-        ax_histx.tick_params(axis="x", labelbottom=False, labelsize=labelsize)
-        ax_histy.tick_params(axis="y", labelleft=False, labelsize=labelsize)
+            # Remove axis labels for histograms
+            ax_histx.tick_params(axis="x", labelbottom=False, labelsize=labelsize)
+            ax_histy.tick_params(axis="y", labelleft=False, labelsize=labelsize)
 
-        # Set ticks position to top
-        ax_histy.xaxis.set_ticks_position("top")
-        ax_histy.xaxis.set_label_position("top")
-        # ax_histy.xaxis.tick_top()
+            # Set ticks position to top
+            ax_histy.xaxis.set_ticks_position("top")
+            ax_histy.xaxis.set_label_position("top")
 
-        # Set figure title
-        ax_histx.set_title(
-            f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} " + r"$\in$" + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
-            fontweight="bold",
-            fontsize=titlesize,
-            y=1.05,
-        )
-
-        # Plot the predictions averaged along the x and y axis
-        if xyz_voxel_pred_uncs is None:
-            ax_histx.scatter(
-                dim_mapping[dim]["x_vox_pos"],
-                dim_mapping[dim]["x_data"],
-                marker=".",
+            # Set figure title
+            ax_histx.set_title(
+                f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} "
+                + r"$\in$"
+                + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
+                fontweight="bold",
+                fontsize=titlesize,
+                y=1.05,
             )
-            ax_histy.scatter(
-                dim_mapping[dim]["y_data"],
-                dim_mapping[dim]["y_vox_pos"],
-                marker=".",
-            )
+
+            # Plot the predictions averaged along the x and y axis
+            if xyz_voxel_pred_uncs is None:
+                ax_histx.scatter(
+                    dim_mapping[dim]["x_vox_pos"],
+                    dim_mapping[dim]["x_data"],
+                    marker=".",
+                )
+                ax_histy.scatter(
+                    dim_mapping[dim]["y_data"],
+                    dim_mapping[dim]["y_vox_pos"],
+                    marker=".",
+                )
+
+            else:
+                # Plot uncertainties if available
+                ax_histx.errorbar(
+                    x=dim_mapping[dim]["x_vox_pos"],
+                    y=dim_mapping[dim]["x_data"],
+                    xerr=0,
+                    yerr=dim_mapping[dim]["x_data_uncs"],
+                    marker=".",
+                    alpha=0.6,
+                )
+                ax_histy.errorbar(
+                    x=dim_mapping[dim]["y_data"],
+                    y=dim_mapping[dim]["y_vox_pos"],
+                    xerr=dim_mapping[dim]["y_data_uncs"],
+                    yerr=0,
+                    marker=".",
+                    alpha=0.6,
+                )
+
+            # Set same range for x and y histograms
+            if reference_value is not None:
+                min_pred_xy = min(
+                    np.min(dim_mapping[dim]["x_data"]),  # type: ignore
+                    np.min(dim_mapping[dim]["y_data"]),  # type: ignore
+                )
+                max_pred_xy = max(
+                    np.max(dim_mapping[dim]["x_data"]),  # type: ignore
+                    np.min(dim_mapping[dim]["y_data"]),  # type: ignore
+                    reference_value,
+                )
+                ax_histx.set_ylim(min_pred_xy * 0.98, max_pred_xy * 1.02)
+                ax_histy.set_xlim(min_pred_xy * 0.98, max_pred_xy * 1.02)
+
+                # Plot reference value
+                ax_histx.axhline(y=reference_value, color="red", alpha=0.5)
+                ax_histy.axvline(x=reference_value, color="red", alpha=0.5)
+
+            # Display grid
+            ax_histx.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
+            ax_histy.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
+
+            # Set axis labels
+            ax_histx.set_ylabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
+            ax_histy.set_xlabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
 
         else:
-            # Plot uncertainties if available
-            ax_histx.errorbar(
-                x=dim_mapping[dim]["x_vox_pos"],
-                y=dim_mapping[dim]["x_data"],
-                xerr=0,
-                yerr=dim_mapping[dim]["x_data_uncs"],
-                marker=".",
-                alpha=0.6,
+            # Set figure title
+            fig.suptitle(
+                f"{fig_suptitle}\nfor volume slice {dim_mapping[dim]['dim_label']} "
+                + r"$\in$"
+                + f"[{voi_slice_coord[0]:.0f}, {voi_slice_coord[-1]:.0f}] {d_unit}",
+                fontweight="bold",
+                fontsize=titlesize,
             )
-            ax_histy.errorbar(
-                x=dim_mapping[dim]["y_data"],
-                y=dim_mapping[dim]["y_vox_pos"],
-                xerr=dim_mapping[dim]["y_data_uncs"],
-                yerr=0,
-                marker=".",
-                alpha=0.6,
-            )
-
-        # Set same range for x and y histograms
-        if reference_value is not None:
-            min_pred_xy = min(
-                np.min(dim_mapping[dim]["x_data"]),  # type: ignore
-                np.min(dim_mapping[dim]["y_data"]),  # type: ignore
-            )
-            max_pred_xy = max(
-                np.max(dim_mapping[dim]["x_data"]),  # type: ignore
-                np.min(dim_mapping[dim]["y_data"]),  # type: ignore
-                reference_value,
-            )
-            ax_histx.set_ylim(min_pred_xy * 0.98, max_pred_xy * 1.02)
-            ax_histy.set_xlim(min_pred_xy * 0.98, max_pred_xy * 1.02)
-
-            # Plot reference value
-            ax_histx.axhline(y=reference_value, color="red", alpha=0.5)
-            ax_histy.axvline(x=reference_value, color="red", alpha=0.5)
-
-        ax_histx.set_ylim()
-        # Display grid
-        ax_histx.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
-        ax_histy.grid(visible=True, color="grey", linestyle="--", linewidth=0.5)
 
         # Add colorbar
         cbar_ax = fig.add_axes(rect=(0.95, 0.1, 0.03, 0.6))  # [left, bottom, width, height]
         cbar = fig.colorbar(im, cax=cbar_ax)  # Attach colorbar to the custom axis
         cbar.set_label(pred_label + " " + pred_unit, fontweight="bold")  # Colorbar label
-
-        # Set axis labels
-        ax_histx.set_ylabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
-        ax_histy.set_xlabel(pred_label + " " + pred_unit, fontsize=fontsize, fontweight="bold")
 
         # Save plot
         if figname is not None:
@@ -504,7 +521,7 @@ class VoxelPlotting:
 
         # The range of volume slice to plot
         if voi_slice is None:
-            voi_slice = (0, voi.n_vox_xyz[dim])
+            voi_slice = (0, voi.n_vox_xyz[dim] - 1)
 
         # The number of volume slice to take into account
         nplots = int(voi_slice[1] - voi_slice[0])
@@ -937,7 +954,7 @@ class VoxelPlotting:
             }
 
             mean = np.mean(dim_mapping[dim]["data"])  # type: ignore
-            mean_label = f"Mean {data_label} = {mean:.3f}" if data_label is not None else f"Mean = {mean:.3f}"
+            label = data_label if data_label is not None else f"Mean = {mean:.3f}"
 
             # Plot 1D data
             ax.scatter(
@@ -945,14 +962,10 @@ class VoxelPlotting:
                 dim_mapping[dim]["data"],
                 marker="+",
                 s=50,
-                label=mean_label,
+                label=label,
                 alpha=0.8,
                 color=color,
             )
-
-            # Plot mean
-            if plot_mean:
-                plt.axhline(y=mean, color=color, alpha=0.4)  # type: ignore
 
         if isinstance(data_3D, list):
             for i, data in enumerate(data_3D):
@@ -973,9 +986,12 @@ class VoxelPlotting:
             fig.suptitle(title, fontweight="bold")
 
         # Legend
-        ax.legend()
+        if plot_mean:
+            ax.legend(bbox_to_anchor=(1.0, 0.7))
+        else:
+            ax.legend()
 
         # Save figure
         if figname is not None:
-            plt.savefig(figname, bbox_inches="tight")
+            plt.savefig(figname + "_" + xlabel[dim][0], bbox_inches="tight")
         plt.show()

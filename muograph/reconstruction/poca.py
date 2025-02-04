@@ -39,7 +39,7 @@ class POCA(AbsSave, VoxelPlotting):
     _poca_indices: Optional[Tensor] = None  # (mu, 3)
     _mask_in_voi: Optional[Tensor] = None  # (mu)
 
-    _batch_size: int = 1024
+    _batch_size: int = 2048
 
     _vars_to_save = [
         "poca_points",
@@ -308,6 +308,24 @@ class POCA(AbsSave, VoxelPlotting):
         masks_xyz = [(poca_points[:, i] >= voi.xyz_min[i]) & (poca_points[:, i] <= voi.xyz_max[i]) for i in range(3)]
         return masks_xyz[0] & masks_xyz[1] & masks_xyz[2]
 
+    @staticmethod
+    def compute_full_mask(mask_in_voi: Tensor, parallel_mask: Tensor) -> Tensor:
+        """Combines the mask_in_voi and parallel_mask to create a full mask. Usefull for comparing
+        instances of the POCA class obatined from the same hits.
+
+        Args:
+            mask_in_voi (Tensor): The mask of POCA points located within the volume of interest.
+            parallel_mask (Tensor): The mask of parallel tracks.
+
+        Returns:
+            Tensor: The full mask.
+        """
+
+        full_mask = torch.zeros_like(parallel_mask, dtype=torch.bool, device=DEVICE)
+        full_mask[torch.where(parallel_mask)[0][mask_in_voi]] = True
+
+        return full_mask
+
     def plot_poca_event(self, event: int, proj: str = "XZ", voi: Optional[Volume] = None, figname: Optional[str] = None) -> None:
         matplotlib.rc("font", **font)
 
@@ -398,6 +416,7 @@ class POCA(AbsSave, VoxelPlotting):
 
     @property
     def poca_points(self) -> Tensor:
+        r"""Tensor: The POCA points computed from the incoming and outgoing tracks."""
         if self._poca_points is None:
             self._poca_points = self.compute_poca_points(
                 points_in=self.tracks.points_in,
@@ -409,36 +428,50 @@ class POCA(AbsSave, VoxelPlotting):
 
     @poca_points.setter
     def poca_points(self, value: Tensor) -> None:
+        r"""Set the POCA points."""
         self._poca_points = value
 
     @property
     def mask_in_voi(self) -> Tensor:
+        r"""Tensor: The mask indicating which POCA points are within the volume of interest (VOI)."""
         if self._mask_in_voi is None:
             self._mask_in_voi = self.compute_mask_in_voi(poca_points=self.poca_points, voi=self.voi)
         return self._mask_in_voi
 
     @property
     def n_poca_per_vox(self) -> Tensor:
+        r"""Tensor: The number of POCA points per voxel."""
         if self._n_poca_per_vox is None:
             self._n_poca_per_vox = self.compute_n_poca_per_vox(poca_points=self.poca_points, voi=self.voi)
         return self._n_poca_per_vox
 
     @n_poca_per_vox.setter
     def n_poca_per_vox(self, value: Tensor) -> None:
+        r"""Set the number of POCA points per voxel."""
         self._n_poca_per_vox = value
 
     @property
     def poca_indices(self) -> Tensor:
+        r"""Tensor: The indices of the POCA points assigned to each voxel."""
         if self._poca_indices is None:
             self._poca_indices = self.assign_voxel_to_pocas(poca_points=self.poca_points, voi=self.voi, batch_size=self._batch_size)
         return self._poca_indices
 
     @poca_indices.setter
     def poca_indices(self, value: Tensor) -> None:
+        r"""Set the indices of the POCA points assigned to each voxel."""
         self._poca_indices = value
 
     @property
     def parallel_mask(self) -> Tensor:
+        r"""Tensor: The mask indicating which tracks are parallel."""
         if self._parallel_mask is None:
             self._parallel_mask = self.compute_parallel_mask(self.tracks.tracks_in, self.tracks.tracks_out)
         return self._parallel_mask
+
+    @property
+    def full_mask(self) -> Tensor:
+        r"""The full mask of POCA points."""
+        full_mask = self.compute_full_mask(mask_in_voi=self.mask_in_voi, parallel_mask=self.parallel_mask)
+
+        return full_mask
