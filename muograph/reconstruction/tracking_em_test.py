@@ -9,6 +9,7 @@ import math
 from fastprogress import progress_bar
 from muograph.volume.volume import Volume
 from muograph.reconstruction.poca import POCA
+from muograph.tracking.tracking import TrackingMST
 from muograph.reconstruction.asr import ASR
 
 
@@ -23,12 +24,17 @@ class TrackingEM(VoxelPlotting):
     _xyz_enters_voi: Optional[Tensor] = None  # to keep
     _xyz_exits_voi: Optional[Tensor] = None  # to keep
 
-    def __init__(self, voi: Volume, poca: POCA, n_events: int = 1000, batch_size: int = 100, muon_path: str = "poca") -> None:
+    _all_poca: Optional[Tensor] = None
+
+    def __init__(self, voi: Volume, tracking: TrackingMST, n_events: int = 1000, batch_size: int = 100, muon_path: str = "poca") -> None:
         # The voxelized volume of inetrest
         self.voi = voi
 
-        # POCA class
-        self.poca = poca
+        # Tracking class
+        self.tracking = tracking
+
+        # POCA
+        self.poca = POCA(tracking=tracking, voi=voi)
 
         # EM parameters
         self.n_events = n_events
@@ -239,10 +245,10 @@ class TrackingEM(VoxelPlotting):
         }
 
         # Data numpy
-        points_in_np = self.poca.tracks.points_in.detach().cpu().numpy()
-        points_out_np = self.poca.tracks.points_out.detach().cpu().numpy()
-        track_in_np = self.poca.tracks.tracks_in.detach().cpu().numpy()[event]
-        track_out_np = self.poca.tracks.tracks_out.detach().cpu().numpy()[event]
+        points_in_np = self.tracking.points_in.detach().cpu().numpy()
+        points_out_np = self.tracking.points_out.detach().cpu().numpy()
+        track_in_np = self.tracking.tracks_in.detach().cpu().numpy()[event]
+        track_out_np = self.tracking.tracks_out.detach().cpu().numpy()[event]
 
         # Y span
         y_span = abs(points_in_np[event, 2] - points_out_np[event, 2])
@@ -318,7 +324,7 @@ class TrackingEM(VoxelPlotting):
         else:
             n_trig_vox = "no voxels triggered"
         fig.suptitle(
-            f"Tracking of event {event:,d}" + "\n" + r"$\delta\theta$ = " + f"{self.poca.tracks.dtheta[event] * 180 / math.pi:.2f} deg, " + n_trig_vox,
+            f"Tracking of event {event:,d}" + "\n" + r"$\delta\theta$ = " + f"{self.tracking.dtheta[event] * 180 / math.pi:.2f} deg, " + n_trig_vox,
             fontweight="bold",
             y=1.05,
         )
@@ -368,6 +374,13 @@ class TrackingEM(VoxelPlotting):
             plt.savefig(figname, bbox_inches="tight")
         plt.show()
 
+    @staticmethod
+    def get_all_poca(poca: POCA, tracking: TrackingMST) -> Tensor:
+        all_poca = torch.zeros_like(tracking.tracks_in, device=tracking.tracks_in.device)
+        all_poca[poca.full_mask] = poca.poca_points
+
+        return all_poca
+
     @property
     def xyz_in_out_voi(self) -> Tuple[Tensor, Tensor]:
         """
@@ -385,11 +398,11 @@ class TrackingEM(VoxelPlotting):
         """
         if self._xyz_in_out_voi is None:
             self._xyz_in_out_voi = ASR._compute_xyz_in_out(
-                points_in=self.poca.tracks.points_in,
-                points_out=self.poca.tracks.points_out,
+                points_in=self.tracking.points_in,
+                points_out=self.tracking.points_out,
                 voi=self.voi,
-                theta_xy_in=(self.poca.tracks.theta_xy_in[0], self.poca.tracks.theta_xy_in[1]),
-                theta_xy_out=(self.poca.tracks.theta_xy_out[0], self.poca.tracks.theta_xy_out[1]),
+                theta_xy_in=(self.tracking.theta_xy_in[0], self.tracking.theta_xy_in[1]),
+                theta_xy_out=(self.tracking.theta_xy_out[0], self.tracking.theta_xy_out[1]),
             )
         return self._xyz_in_out_voi
 
@@ -410,11 +423,11 @@ class TrackingEM(VoxelPlotting):
         """Voxels triggered by the muon track"""
         if self._triggered_voxels is None:
             self._triggered_voxels = TrackingEM.get_triggered_voxels(
-                points_in=self.poca.tracks.points_in,
-                points_out=self.poca.tracks.points_out,
+                points_in=self.tracking.points_in,
+                points_out=self.tracking.points_out,
                 voi=self.voi,
-                theta_xy_in=(self.poca.tracks.theta_xy_in[0], self.poca.tracks.theta_xy_in[1]),
-                theta_xy_out=(self.poca.tracks.theta_xy_out[0], self.poca.tracks.theta_xy_out[1]),
+                theta_xy_in=(self.tracking.theta_xy_in[0], self.tracking.theta_xy_in[1]),
+                theta_xy_out=(self.tracking.theta_xy_out[0], self.tracking.theta_xy_out[1]),
             )
         return self._triggered_voxels
 
@@ -422,12 +435,18 @@ class TrackingEM(VoxelPlotting):
     def xyz_enters_voi(self) -> Tensor:
         """Coordinates of the muon incoming track when entering the voi"""
         if self._xyz_enters_voi is None:
-            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.poca.tracks.theta_xy_in, pm=-1)
+            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.tracking.theta_xy_in, pm=-1)
         return self._xyz_enters_voi
 
     @property
     def xyz_exits_voi(self) -> Tensor:
         """Coordinates of the muon outgoing track when exiting the voi"""
         if self._xyz_exits_voi is None:
-            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.poca.tracks.theta_xy_out, pm=1)
+            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.tracking.theta_xy_out, pm=1)
         return self._xyz_exits_voi
+
+    @property
+    def all_poca(self) -> Tensor:
+        if self._all_poca is None:
+            self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
+        return self._all_poca
