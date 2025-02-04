@@ -19,7 +19,6 @@ N_POINTS_PER_Z_LAYER = 7
 
 
 class TrackingEM(VoxelPlotting):
-
     _xyz_in_out_voi: Optional[Tuple[Tensor, Tensor]] = None
     _triggered_voxels: Optional[List[np.ndarray]] = None
     _path_length_in_out: Optional[Tuple[Tensor, Tensor]] = None
@@ -27,15 +26,7 @@ class TrackingEM(VoxelPlotting):
     _xyz_enters_voi: Optional[Tensor] = None  # to keep
     _xyz_exits_voi: Optional[Tensor] = None  # to keep
 
-
-    def __init__(
-            self,
-            voi: Volume,
-            poca: POCA,
-            n_events: int = 1000,
-            batch_size: int = 100,
-            muon_path: str = "poca") -> None:
-
+    def __init__(self, voi: Volume, poca: POCA, n_events: int = 1000, batch_size: int = 100, muon_path: str = "poca") -> None:
         # The voxelized volume of inetrest
         self.voi = voi
 
@@ -54,7 +45,6 @@ class TrackingEM(VoxelPlotting):
         xyz_discrete_in: Tensor,
         xyz_discrete_out: Tensor,
     ) -> List[np.ndarray]:
-
         """Find the voxels triggered by the muon track"""
         triggered_voxels = []
         n_mu = xyz_discrete_in.size(2)
@@ -67,7 +57,7 @@ class TrackingEM(VoxelPlotting):
                 ix_min, iy_min = event_indices[0][0], event_indices[0][1]
                 ix_max, iy_max = event_indices[1][0], event_indices[1][1]
 
-                sub_voi_edges = voi.voxel_edges[ix_min: ix_max + 1, iy_min: iy_max + 1]
+                sub_voi_edges = voi.voxel_edges[ix_min : ix_max + 1, iy_min : iy_max + 1]
                 sub_voi_edges = sub_voi_edges[:, :, :, :, None, :].expand(-1, -1, -1, -1, xyz_discrete_out.size()[1], -1)
 
                 xyz_in_event = xyz_discrete_in[:, :, event]
@@ -107,7 +97,6 @@ class TrackingEM(VoxelPlotting):
         theta_xy_in: Tuple[Tensor, Tensor],
         theta_xy_out: Tuple[Tensor, Tensor],
     ) -> List[np.ndarray]:
-
         xyz_in_out_voi = ASR._compute_xyz_in_out(
             points_in=points_in,
             points_out=points_out,
@@ -124,9 +113,7 @@ class TrackingEM(VoxelPlotting):
             voi=voi,
         )
 
-        sub_vol_indices_min_max = ASR._find_sub_volume(
-            voi=voi, xyz_in_voi=xyz_in_out_voi[0],
-            xyz_out_voi=xyz_in_out_voi[1])
+        sub_vol_indices_min_max = ASR._find_sub_volume(voi=voi, xyz_in_voi=xyz_in_out_voi[0], xyz_out_voi=xyz_in_out_voi[1])
 
         return TrackingEM._find_triggered_voxels(
             voi=voi,
@@ -135,9 +122,10 @@ class TrackingEM(VoxelPlotting):
             xyz_discrete_out=xyz_discrete_in_out[1],
         )
 
-    def compute_intersection_coordinates(self, ):
-        
-        return 0. 
+    def compute_intersection_coordinates(
+        self,
+    ):
+        return 0.0
 
     @staticmethod
     def compute_path_length_in_out(
@@ -145,14 +133,9 @@ class TrackingEM(VoxelPlotting):
         xyz_enters_voi: Tensor,
         xyz_exits_voi: Tensor,
     ) -> Tuple[Tensor, Tensor]:
+        path_length_in = torch.sqrt(torch.sum((xyz_enters_voi - poca_points) ** 2, dim=1))
 
-        path_length_in = torch.sqrt(
-            torch.sum((xyz_enters_voi - poca_points) ** 2, dim=1)
-        )
-
-        path_length_out = torch.sqrt(
-            torch.sum((xyz_exits_voi - poca_points) ** 2, dim=1)
-        )
+        path_length_out = torch.sqrt(torch.sum((xyz_exits_voi - poca_points) ** 2, dim=1))
         return path_length_in, path_length_out
 
     @staticmethod
@@ -160,7 +143,7 @@ class TrackingEM(VoxelPlotting):
         xyz_enters_voi: Tensor,
         xyz_exits_voi: Tensor,
     ) -> Tensor:
-        """Computes the muon path length between the entry and 
+        """Computes the muon path length between the entry and
         exit points in the VOI, assuming a straight path.
 
         Args:
@@ -171,9 +154,7 @@ class TrackingEM(VoxelPlotting):
             Tensor: The path length between the entry and exit points.
         """
 
-        return torch.sqrt(
-            torch.sum((xyz_enters_voi - xyz_exits_voi) ** 2, dim=1)
-        )
+        return torch.sqrt(torch.sum((xyz_enters_voi - xyz_exits_voi) ** 2, dim=1))
 
     @staticmethod
     def recompute_point(
@@ -217,18 +198,12 @@ class TrackingEM(VoxelPlotting):
         # Calculate deltas
         delta_x = torch.where(
             ~enters_in_x,
-            torch.min(
-                torch.abs(xyz_in_voi[:, 0] - voi.xyz_min[0]),
-                torch.abs(xyz_in_voi[:, 0] - voi.xyz_max[0])
-            ),
+            torch.min(torch.abs(xyz_in_voi[:, 0] - voi.xyz_min[0]), torch.abs(xyz_in_voi[:, 0] - voi.xyz_max[0])),
             0.0,
         )
         delta_y = torch.where(
             ~enters_in_y,
-            torch.min(
-                torch.abs(xyz_in_voi[:, 1] - voi.xyz_min[1]),
-                torch.abs(xyz_in_voi[:, 1] - voi.xyz_max[1])
-            ),
+            torch.min(torch.abs(xyz_in_voi[:, 1] - voi.xyz_min[1]), torch.abs(xyz_in_voi[:, 1] - voi.xyz_max[1])),
             0.0,
         )
 
@@ -248,33 +223,13 @@ class TrackingEM(VoxelPlotting):
 
         # z and y corrections for x boundary crossings
         x_cross_mask = enters_left_x | enters_right_x
-        correct_coords(
-            x_cross_mask,
-            2,
-            None,
-            lambda z: z + (pm * torch.abs(delta_x / torch.tan(theta_xy[0])))
-        )
-        correct_coords(
-            x_cross_mask & enters_in_y,
-            1,
-            None,
-            lambda y: y + pm * (torch.abs(delta_x / torch.tan(theta_xy[0])) * torch.tan(theta_xy[1]))
-        )
+        correct_coords(x_cross_mask, 2, None, lambda z: z + (pm * torch.abs(delta_x / torch.tan(theta_xy[0]))))
+        correct_coords(x_cross_mask & enters_in_y, 1, None, lambda y: y + pm * (torch.abs(delta_x / torch.tan(theta_xy[0])) * torch.tan(theta_xy[1])))
 
         # z and x corrections for y boundary crossings
         y_cross_mask = enters_left_y | enters_right_y
-        correct_coords(
-            y_cross_mask & enters_in_x,
-            2,
-            None,
-            lambda z: z + pm * torch.abs(delta_y / torch.tan(theta_xy[1]))
-        )
-        correct_coords(
-            y_cross_mask & enters_in_x,
-            0,
-            None,
-            lambda x: x + pm * (torch.abs(delta_y / torch.tan(theta_xy[1])) * torch.tan(theta_xy[0]))
-        )
+        correct_coords(y_cross_mask & enters_in_x, 2, None, lambda z: z + pm * torch.abs(delta_y / torch.tan(theta_xy[1])))
+        correct_coords(y_cross_mask & enters_in_x, 0, None, lambda x: x + pm * (torch.abs(delta_y / torch.tan(theta_xy[1])) * torch.tan(theta_xy[0])))
 
         return xyz_in_voi_new
 
@@ -333,13 +288,13 @@ class TrackingEM(VoxelPlotting):
             )
 
             # ax.scatter(
-                # x=self.xyz_in_out_voi[1][event, 1, dim_map[proj]["x"]],
-                # y=self.xyz_in_out_voi[1][event, 1, dim_map[proj]["y"]],
-                # x=self.xyz_exits_voi[event, dim_map[proj]["x"]],
-                # y=self.xyz_exits_voi[event, dim_map[proj]["x"]],
-                # color="green",
-                # label=r"Track$_{out}$ exit point",
-                # marker="x",
+            # x=self.xyz_in_out_voi[1][event, 1, dim_map[proj]["x"]],
+            # y=self.xyz_in_out_voi[1][event, 1, dim_map[proj]["y"]],
+            # x=self.xyz_exits_voi[event, dim_map[proj]["x"]],
+            # y=self.xyz_exits_voi[event, dim_map[proj]["x"]],
+            # color="green",
+            # label=r"Track$_{out}$ exit point",
+            # marker="x",
             # )
 
             # ax.scatter(
@@ -380,7 +335,7 @@ class TrackingEM(VoxelPlotting):
 
         # Plot voxel grid
         self.plot_voxel_grid(
-            dim=dim_map[proj]["dim"],  #type: ignore
+            dim=dim_map[proj]["dim"],  # type: ignore
             # dim=1,  #type: ignore
             voi=self.voi,
             ax=ax,
@@ -477,22 +432,12 @@ class TrackingEM(VoxelPlotting):
     def xyz_enters_voi(self) -> Tensor:
         """Coordinates of the muon incoming track when entering the voi"""
         if self._xyz_enters_voi is None:
-            self._xyz_enters_voi = self.recompute_point(
-                xyz_in_voi=self.xyz_in_out_voi[0][:, 1],
-                voi=self.voi,
-                theta_xy=self.poca.tracks.theta_xy_in,
-                pm=-1
-            )
+            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.poca.tracks.theta_xy_in, pm=-1)
         return self._xyz_enters_voi
 
     @property
     def xyz_exits_voi(self) -> Tensor:
         """Coordinates of the muon outgoing track when exiting the voi"""
         if self._xyz_exits_voi is None:
-            self._xyz_exits_voi = self.recompute_point(
-                xyz_in_voi=self.xyz_in_out_voi[1][:, 0],
-                voi=self.voi,
-                theta_xy=self.poca.tracks.theta_xy_out,
-                pm=1
-            )
+            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.poca.tracks.theta_xy_out, pm=1)
         return self._xyz_exits_voi
