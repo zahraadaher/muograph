@@ -110,6 +110,30 @@ poetry run pytest muograph/test/
 
 For those unfamiliar with poetry, basically just prepend commands with `poetry run` to use the stuff installed within the local environment, e.g. `poetry run jupyter notebook` to start a jupyter notebook server. This local environment is basically a python virtual environment. To correctly set up the interpreter in your IDE, use `poetry run which python` to see the path to the correct python executable.
 
+### How-to: jupyter notebooks
+
+You can run notebooks both on a remote gateway node and on compute nodes. In the following, we will use this convention:
+- `head node` is a remote gateway machine (for instance `ingrid-ui` in Louvain, or `gaeui01` in Oviedo)
+- `compute node` is a computing node (more powerful computing CPUs) that is usually not accessible from outside (hence requires tunnelling through the head node). In Louvain, it is e.g. the whatever it is called (I forgot), in Louvain the `gae` machines.
+On the head node, run it on port 8889:
+```console
+jupyter notebook --no-browser --port=8889
+```
+On computing nodes, run it on port 8890 instead:
+```console
+jupyter notebook --no-browser --port=8890
+```
+If the notebook runs on a compute node, run port forwarding on ingrid:
+```console
+ssh -N -f -L localhost:8889:localhost:8890 gpunode
+```
+If it runs on the ingrid head node, it is enough to just run port forwarding locally (also needed if running the notebook on a compute node):
+```console
+ssh -N -f -L localhost:8888:localhost:8889 ucl
+```
+with an appropriate `~/.ssh/config` defining the hosts `ucl` and `gpunode`.
+The notebooks can be viewed locally at http://localhost:8888/tree.
+
 
 ## Tutorials
 
