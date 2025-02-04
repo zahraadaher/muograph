@@ -1,18 +1,15 @@
-import warnings
 from muograph.plotting.voxel import VoxelPlotting
 from muograph.plotting.params import configure_plot_theme, font, tracking_figsize
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Union, Optional, Dict
+from typing import List, Tuple, Union, Optional, Dict, Callable
 import torch
 from torch import Tensor
 import numpy as np
-import pandas as pd
 import math
 from fastprogress import progress_bar
 from muograph.volume.volume import Volume
 from muograph.reconstruction.poca import POCA
 from muograph.reconstruction.asr import ASR
-from torch.utils.data import DataLoader, TensorDataset
 
 
 N_POINTS_PER_Z_LAYER = 7
@@ -122,11 +119,6 @@ class TrackingEM(VoxelPlotting):
             xyz_discrete_out=xyz_discrete_in_out[1],
         )
 
-    def compute_intersection_coordinates(
-        self,
-    ):
-        return 0.0
-
     @staticmethod
     def compute_path_length_in_out(
         poca_points: Tensor,
@@ -208,18 +200,16 @@ class TrackingEM(VoxelPlotting):
         )
 
         # Helper function for coordinate corrections
-        def correct_coords(mask: Tensor, coord_idx: int, target_value: Optional[float] = None, adjust_fn=None):
+        def correct_coords(mask: Tensor, coord_idx: int, target_value: Optional[float] = None, adjust_fn: Optional[Callable] = None) -> None:
             xyz_in_voi_new[:, coord_idx] = torch.where(
-                mask,
-                adjust_fn(xyz_in_voi_new[:, coord_idx]) if adjust_fn else target_value,
-                xyz_in_voi_new[:, coord_idx],
+                mask, adjust_fn(xyz_in_voi_new[:, coord_idx]) if adjust_fn else target_value, xyz_in_voi_new[:, coord_idx]
             )
 
         # Correct coordinates based on entry conditions
-        correct_coords(enters_left_x, 0, voi.xyz_min[0])
-        correct_coords(enters_right_x, 0, voi.xyz_max[0])
-        correct_coords(enters_left_y, 1, voi.xyz_min[1])
-        correct_coords(enters_right_y, 1, voi.xyz_max[1])
+        correct_coords(enters_left_x, 0, voi.xyz_min[0].cpu().item())
+        correct_coords(enters_right_x, 0, voi.xyz_max[0].cpu().item())
+        correct_coords(enters_left_y, 1, voi.xyz_min[1].cpu().item())
+        correct_coords(enters_right_y, 1, voi.xyz_max[1].cpu().item())
 
         # z and y corrections for x boundary crossings
         x_cross_mask = enters_left_x | enters_right_x
@@ -404,7 +394,7 @@ class TrackingEM(VoxelPlotting):
         return self._xyz_in_out_voi
 
     @property
-    def path_length_in_out(self) -> Tensor:
+    def path_length_in_out(self) -> Tuple[Tensor, Tensor]:
         """Path length between the incoming tracks entry point in the voi and the poca point,
         and ath length between the outgoing tracks exit point in the voi and the poca point"""
         if self._path_length_in_out is None:
