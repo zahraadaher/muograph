@@ -2,7 +2,6 @@ import torch
 from torch import Tensor
 from typing import Tuple
 from muograph.utils.device import DEVICE
-# add co
 
 r"""
 Provides container classes for a batch of many muons.
