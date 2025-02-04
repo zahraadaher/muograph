@@ -126,7 +126,7 @@ class ASR(AbsSave, AbsVoxelInferer):
             for the OUTGOING tracks.
         """
         n_mu = theta_xy_in[0].size(0)
-        xyz_in_voi, xyz_out_voi = torch.zeros((n_mu, 2, 3), device=DEVICE), torch.zeros((n_mu, 2, 3), device=DEVICE)
+        xyz_in_voi, xyz_out_voi = torch.zeros((n_mu, 2, 3)), torch.zeros((n_mu, 2, 3))
 
         for point, theta_xy, pm, xyz in zip(
             [points_in, points_out],
@@ -173,14 +173,12 @@ class ASR(AbsSave, AbsVoxelInferer):
 
         # Compute the z locations cross the voi
         z_discrete = (
-            torch.linspace(
-                torch.min(voi.voxel_edges[0, 0, :, :, 2]),
-                torch.max(voi.voxel_edges[0, 0, :, :, 2]),
-                n_points,
-            )[:, None]
+            torch.linspace(torch.min(voi.voxel_edges[0, 0, :, :, 2]), torch.max(voi.voxel_edges[0, 0, :, :, 2]), n_points, device=theta_xy_out[0].device)[
+                :, None
+            ]
         ).expand(-1, n_mu)
 
-        xyz_discrete_in, xyz_discrete_out = torch.ones((3, n_points, n_mu), device=DEVICE), torch.ones((3, n_points, n_mu), device=DEVICE)
+        xyz_discrete_in, xyz_discrete_out = torch.ones((3, n_points, n_mu)), torch.ones((3, n_points, n_mu))
 
         for xyz_discrete, theta_in_out, xyz_in_out in zip(
             [xyz_discrete_in, xyz_discrete_out],
@@ -188,7 +186,7 @@ class ASR(AbsSave, AbsVoxelInferer):
             xyz_in_out_voi,
         ):
             for dim, theta in zip([0, 1], theta_in_out):
-                xyz_discrete[dim] = abs(z_discrete - xyz_in_out[:, 0, 2]) * torch.tan(theta) + xyz_in_out[:, 0, dim]
+                xyz_discrete[dim] = torch.abs(z_discrete - xyz_in_out[:, 0, 2]) * torch.tan(theta) + xyz_in_out[:, 0, dim]
 
             xyz_discrete[2] = z_discrete
 
