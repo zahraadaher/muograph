@@ -13,8 +13,8 @@ alpha_sns: float = 0.4
 d_unit: str = "mm"
 
 # Matplotlib default font
-fontsize: int = 16
-labelsize: int = 16
+fontsize: int = 18
+labelsize: int = 19
 titlesize: int = 20
 
 fontweigh: str = "normal"

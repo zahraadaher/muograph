@@ -10,6 +10,7 @@ import h5py
 import matplotlib.pyplot as plt
 
 from muograph.utils.save import AbsSave
+from muograph.utils.device import DEVICE
 from muograph.tracking.tracking import TrackingMST
 from muograph.volume.volume import Volume
 from muograph.reconstruction.voxel_inferer import AbsVoxelInferer
@@ -172,11 +173,9 @@ class ASR(AbsSave, AbsVoxelInferer):
 
         # Compute the z locations cross the voi
         z_discrete = (
-            torch.linspace(
-                torch.min(voi.voxel_edges[0, 0, :, :, 2]),
-                torch.max(voi.voxel_edges[0, 0, :, :, 2]),
-                n_points,
-            )[:, None]
+            torch.linspace(torch.min(voi.voxel_edges[0, 0, :, :, 2]), torch.max(voi.voxel_edges[0, 0, :, :, 2]), n_points, device=theta_xy_out[0].device)[
+                :, None
+            ]
         ).expand(-1, n_mu)
 
         xyz_discrete_in, xyz_discrete_out = torch.ones((3, n_points, n_mu)), torch.ones((3, n_points, n_mu))
@@ -187,7 +186,7 @@ class ASR(AbsSave, AbsVoxelInferer):
             xyz_in_out_voi,
         ):
             for dim, theta in zip([0, 1], theta_in_out):
-                xyz_discrete[dim] = abs(z_discrete - xyz_in_out[:, 0, 2]) * torch.tan(theta) + xyz_in_out[:, 0, dim]
+                xyz_discrete[dim] = torch.abs(z_discrete - xyz_in_out[:, 0, 2]) * torch.tan(theta) + xyz_in_out[:, 0, dim]
 
             xyz_discrete[2] = z_discrete
 

@@ -418,3 +418,36 @@ class Hits:
         if self._hits_eff is None:
             self._hits_eff = self.get_muon_wise_eff(self.efficiency, self.gen_hits)
         return self._hits_eff
+
+
+def filter_nans(hits_in: Hits, hits_out: Hits) -> None:
+    """
+    Filters out events containing NaN values in the input and output `Hits` objects.
+
+    This function checks for NaN values across all events in the `gen_hits` attribute
+    of both input `hits_in` and output `hits_out` objects. Events with NaN values
+    in either object are excluded by applying a combined mask.
+
+    Args:
+        hits_in (Hits): An instance of the `Hits` class representing input events.
+                        Must have a `gen_hits` attribute containing event data as
+                        a tensor.
+        hits_out (Hits): An instance of the `Hits` class representing output events.
+                         Must have a `gen_hits` attribute containing event data as
+                         a tensor.
+
+    Side Effects:
+        Both `hits_in` and `hits_out` are modified in-place by filtering out events
+        that contain NaN values in their `gen_hits`.
+
+    Example Usage:
+        >>> filter_nans(input_hits, output_hits)
+    """
+
+    mask_nan_in = ~torch.any(torch.isnan(hits_in.gen_hits), dim=(0, 1))
+    mask_nan_out = ~torch.any(torch.isnan(hits_out.gen_hits), dim=(0, 1))
+
+    mask_nan = mask_nan_in & mask_nan_out
+
+    hits_in._filter_events(mask_nan)
+    hits_out._filter_events(mask_nan)
