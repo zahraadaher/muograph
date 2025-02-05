@@ -257,12 +257,13 @@ class TrackingEM(VoxelPlotting):
 
         # Plot POCA point
         if self.poca is not None:
-            ax.scatter(
-                x=self.poca.poca_points[event, dim_map[proj]["x"]],
-                y=self.poca.poca_points[event, dim_map[proj]["y"]],
-                color="black",
-                label="POCA point",
-            )
+            if self.all_poca[event, dim_map[proj]["x"]] != 0:
+                ax.scatter(
+                    x=self.all_poca[event, dim_map[proj]["x"]],
+                    y=self.all_poca[event, dim_map[proj]["y"]],
+                    color="black",
+                    label="POCA point",
+                )
 
             # ax.scatter(
             #     x=self.xyz_in_out_voi[0][event, 0, dim_map[proj]["x"]],
@@ -412,7 +413,7 @@ class TrackingEM(VoxelPlotting):
         and ath length between the outgoing tracks exit point in the voi and the poca point"""
         if self._path_length_in_out is None:
             self._path_length_in_out = self.compute_path_length_in_out(
-                poca_points=self.poca.poca_points,
+                poca_points=self.all_poca,
                 xyz_enters_voi=self.xyz_enters_voi,
                 xyz_exits_voi=self.xyz_exits_voi,
             )
@@ -447,6 +448,7 @@ class TrackingEM(VoxelPlotting):
 
     @property
     def all_poca(self) -> Tensor:
+        """The poca points associated to ALL the tracks in self.tracking"""
         if self._all_poca is None:
             self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
         return self._all_poca
