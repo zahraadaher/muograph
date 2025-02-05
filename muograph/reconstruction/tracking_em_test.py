@@ -258,8 +258,8 @@ class TrackingEM(VoxelPlotting):
         # Plot POCA point
         if self.poca is not None:
             ax.scatter(
-                x=self.poca.poca_points[event, dim_map[proj]["x"]],
-                y=self.poca.poca_points[event, dim_map[proj]["y"]],
+                x=self.poca.poca_points[event, dim_map[proj]["x"]],  # type: ignore
+                y=self.poca.poca_points[event, dim_map[proj]["y"]],  # type: ignore
                 color="black",
                 label="POCA point",
             )
@@ -275,8 +275,8 @@ class TrackingEM(VoxelPlotting):
             # )
 
             ax.scatter(
-                x=self.xyz_enters_voi[event, dim_map[proj]["x"]],
-                y=self.xyz_enters_voi[event, dim_map[proj]["y"]],
+                x=self.xyz_enters_voi[event, dim_map[proj]["x"]],  # type: ignore
+                y=self.xyz_enters_voi[event, dim_map[proj]["y"]],  # type: ignore
                 color="red",
                 label=r"Track$_{in}$ entry point",
                 marker="x",
@@ -303,8 +303,8 @@ class TrackingEM(VoxelPlotting):
             # )
 
             ax.scatter(
-                x=self.xyz_exits_voi[event, dim_map[proj]["x"]],
-                y=self.xyz_exits_voi[event, dim_map[proj]["y"]],
+                x=self.xyz_exits_voi[event, dim_map[proj]["x"]],  # type: ignore
+                y=self.xyz_exits_voi[event, dim_map[proj]["y"]],  # type: ignore
                 color="green",
                 label=r"Track$_{out}$ entry point",
                 marker="x",
@@ -313,8 +313,8 @@ class TrackingEM(VoxelPlotting):
 
         if points is not None:
             ax.scatter(
-                x=points[:, dim_map[proj]["x"]],
-                y=points[:, dim_map[proj]["y"]],
+                x=points[:, dim_map[proj]["x"]],  # type: ignore
+                y=points[:, dim_map[proj]["y"]],  # type: ignore
                 color="black",
                 label="points",
             )
