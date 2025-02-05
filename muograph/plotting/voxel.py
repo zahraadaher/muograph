@@ -589,12 +589,12 @@ class VoxelPlotting:
                 "z_min_fn": lambda v, s: v.voxel_edges[0, 0, s, 0, 2].detach().cpu().numpy(),
                 "z_max_fn": lambda v, s: v.voxel_edges[0, 0, s + nslice_per_plot - 1, 1, 2].detach().cpu().numpy(),
                 "left_right_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 0],
-                    voi.voxel_edges[-1, 0, 0, 1, 0],
+                    voi.voxel_edges[0, 0, 0, 0, 0].cpu().numpy(),
+                    voi.voxel_edges[-1, 0, 0, 1, 0].cpu().numpy(),
                 ),
                 "bottom_top_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 1],
-                    voi.voxel_edges[0, -1, 0, 1, 1],
+                    voi.voxel_edges[0, 0, 0, 0, 1].cpu().numpy(),
+                    voi.voxel_edges[0, -1, 0, 1, 1].cpu().numpy(),
                 ),
                 "dim_label": "z",
                 "x_label": f"x [{d_unit}]",
@@ -606,12 +606,12 @@ class VoxelPlotting:
                 "z_min_fn": lambda v, s: v.voxel_edges[0, s, 0, 0, 1].detach().cpu().numpy(),
                 "z_max_fn": lambda v, s: v.voxel_edges[0, s + nslice_per_plot - 1, 0, 1, 1].detach().cpu().numpy(),
                 "left_right_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 0],
-                    voi.voxel_edges[-1, 0, 0, 1, 0],
+                    voi.voxel_edges[0, 0, 0, 0, 0].cpu().numpy(),
+                    voi.voxel_edges[-1, 0, 0, 1, 0].cpu().numpy(),
                 ),
                 "bottom_top_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 2],
-                    voi.voxel_edges[0, 0, -1, 1, 2],
+                    voi.voxel_edges[0, 0, 0, 0, 2].cpu().numpy(),
+                    voi.voxel_edges[0, 0, -1, 1, 2].cpu().numpy(),
                 ),
                 "dim_label": "y",
                 "x_label": f"x [{d_unit}]",
@@ -623,12 +623,12 @@ class VoxelPlotting:
                 "z_min_fn": lambda v, s: v.voxel_edges[s, 0, 0, 0, 0].detach().cpu().numpy(),
                 "z_max_fn": lambda v, s: v.voxel_edges[s + nslice_per_plot - 1, 0, 0, 1, 0].detach().cpu().numpy(),
                 "left_right_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 1],
-                    voi.voxel_edges[0, -1, 0, 1, 1],
+                    voi.voxel_edges[0, 0, 0, 0, 1].cpu().numpy(),
+                    voi.voxel_edges[0, -1, 0, 1, 1].cpu().numpy(),
                 ),
                 "bottom_top_extent": (
-                    voi.voxel_edges[0, 0, 0, 0, 2],
-                    voi.voxel_edges[0, 0, -1, 1, 2],
+                    voi.voxel_edges[0, 0, 0, 0, 2].cpu().numpy(),
+                    voi.voxel_edges[0, 0, -1, 1, 2].cpu().numpy(),
                 ),
                 "dim_label": "x",
                 "x_label": f"y [{d_unit}]",
@@ -656,7 +656,6 @@ class VoxelPlotting:
             preds_slice = slice_fn(xyz_voxel_preds, slice)
             z_min = z_min_fn(voi, slice)  # type: ignore
             z_max = z_max_fn(voi, slice)  # type: ignore
-
             im = axs[i].imshow(
                 preds_slice.T,
                 origin="lower",
