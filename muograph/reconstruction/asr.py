@@ -125,7 +125,7 @@ class ASR(AbsSave, AbsVoxelInferer):
             for the OUTGOING tracks.
         """
         n_mu = theta_xy_in[0].size(0)
-        xyz_in_voi, xyz_out_voi = torch.zeros((n_mu, 2, 3), device=DEVICE), torch.zeros((n_mu, 2, 3), device=DEVICE)
+        xyz_in_voi, xyz_out_voi = torch.zeros((n_mu, 2, 3), device=theta_xy_in[0].device), torch.zeros((n_mu, 2, 3), device=theta_xy_in[0].device)
 
         for point, theta_xy, pm, xyz in zip(
             [points_in, points_out],
@@ -177,7 +177,9 @@ class ASR(AbsSave, AbsVoxelInferer):
             ]
         ).expand(-1, n_mu)
 
-        xyz_discrete_in, xyz_discrete_out = torch.ones((3, n_points, n_mu), device=DEVICE), torch.ones((3, n_points, n_mu), device=DEVICE)
+        xyz_discrete_in, xyz_discrete_out = torch.ones((3, n_points, n_mu), device=theta_xy_out[0].device), torch.ones(
+            (3, n_points, n_mu), device=theta_xy_out[0].device
+        )
 
         for xyz_discrete, theta_in_out, xyz_in_out in zip(
             [xyz_discrete_in, xyz_discrete_out],
