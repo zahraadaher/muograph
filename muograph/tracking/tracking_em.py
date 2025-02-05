@@ -372,7 +372,7 @@ class Tracking_EM:
                 theta_x = math.atan((OUT[0] - IN[0]) / (OUT[2] - IN[2]))
                 theta_y = math.atan((OUT[1] - IN[1]) / (OUT[2] - IN[2]))
 
-                z = torch.linspace(zmax, zmin, 100)
+                z = torch.linspace(zmax, zmin, 100)  # type: ignore
                 x = IN[0] + (z - IN[2]) * math.tan(theta_x)
                 y = IN[1] + (z - IN[2]) * math.tan(theta_y)
 
@@ -659,8 +659,8 @@ class Tracking_EM:
             sign_x, sign_y = (-1, -1) if x1 > x2 and y1 > y2 else (-1, 1) if x1 > x2 and y1 < y2 else (1, -1) if x1 < x2 and y1 > y2 else (1, 1)
 
             # Apply sorted transformations
-            triggered_voxels.append(sorted(voxels, key=lambda k: (k[2], sign_x * k[0], sign_y * k[1])))
-            coordinates.append(sorted(coords, key=lambda k: (-k[2], sign_x * k[0], sign_y * k[1])))
+            triggered_voxels.append(sorted(voxels, key=lambda k: (k[2], sign_x * k[0], sign_y * k[1])))  # type: ignore
+            coordinates.append(sorted(coords, key=lambda k: (-k[2], sign_x * k[0], sign_y * k[1])))  # type: ignore
 
         return triggered_voxels, coordinates, indices
 

@@ -444,8 +444,8 @@ def filter_nans(hits_in: Hits, hits_out: Hits) -> None:
         >>> filter_nans(input_hits, output_hits)
     """
 
-    mask_nan_in = ~torch.any(torch.isnan(hits_in.gen_hits), dim=(0, 1))
-    mask_nan_out = ~torch.any(torch.isnan(hits_out.gen_hits), dim=(0, 1))
+    mask_nan_in = ~torch.any(torch.isnan(hits_in.gen_hits), dim=(0, 1))  # type: ignore[call-overload]
+    mask_nan_out = ~torch.any(torch.isnan(hits_out.gen_hits), dim=(0, 1))  # type: ignore[call-overload]
 
     mask_nan = mask_nan_in & mask_nan_out
 
