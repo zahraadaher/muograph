@@ -15,10 +15,19 @@ from muograph.reconstruction.asr import ASR
 
 N_POINTS_PER_Z_LAYER = 7
 
+"""
+Notas mías para entenderme:
+    - Los "@..." se llaman 'decoradores', si no me equivoco tienen que ver con que el atrivuto o el método se puede llamar sin necesidad
+    de hacer un objeto de esa clase (o algo así)
+    - Hay mezcla de lenguaje C++, por ello se suele decar indicado el tipo de variable/método que se tiene para que el código sea más comprensible
+    - Hola
+"""
+
 
 class TrackingEM(VoxelPlotting):
     _xyz_in_out_voi: Optional[Tuple[Tensor, Tensor]] = None
     _triggered_voxels: Optional[List[np.ndarray]] = None
+    _intersection_coordinates: Optional[Tensor] = None
     _path_length_in_out: Optional[Tuple[Tensor, Tensor]] = None
 
     _xyz_enters_voi: Optional[Tensor] = None  # to keep
@@ -124,6 +133,36 @@ class TrackingEM(VoxelPlotting):
             xyz_discrete_in=xyz_discrete_in_out[0],
             xyz_discrete_out=xyz_discrete_in_out[1],
         )
+
+    def _compute_intersection_coordinates(
+        self,
+        voi: Volume,
+        triggered_voxels: List[np.ndarray],
+        xyz_enters_voi: Tensor,
+        xyz_exits_voi: Tensor,
+        tracks_in: Tensor,
+        tracks_out: Tensor,
+        all_poca: Tensor,
+    ) -> Tensor:
+        """
+        A method that retuns the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+          of its triggered voxels inside this volume.
+
+        Args:
+            voi (Volume): the voxelized volume of interest
+            triggered_voxels (List[np.ndarray]): list of the triggered voxels of all muon event of length N_mu
+            xyz_enters_voi (Tensor): a tensor with the entry x,y and z coordinates (N_mu, 3)
+            xyz_exits_voi (Tensor): a tensor with the exit x,y and z coordinates (N_mu, 3)
+            tracks_in (Tensor): the unit direction vector of the entering point (N_mu, 3)
+            tracks_out (Tensor): the unit direction vector of the exit point (N_mu, 3)
+            all_poca (Tensor): tensor of the xyz positions of all unfiltered poca events (N_mu, 3). If the poca xyz is (0,0,0),
+              this coresponds to a filtered event.
+
+        Returns:
+            Tensor: tensor of the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+          of its triggered voxels inside this volume (N_mu, )
+        """
+        return torch.tensor([0])
 
     @staticmethod
     def compute_path_length_in_out(
@@ -257,10 +296,10 @@ class TrackingEM(VoxelPlotting):
 
         # Plot POCA point
         if self.poca is not None:
-            if self.all_poca[event, dim_map[proj]["x"]] != 0:
+            if self.all_poca[event, dim_map[proj]["x"]] != 0:  # type: ignore
                 ax.scatter(
-                    x=self.all_poca[event, dim_map[proj]["x"]],
-                    y=self.all_poca[event, dim_map[proj]["y"]],
+                    x=self.all_poca[event, dim_map[proj]["x"]],  # type: ignore
+                    y=self.all_poca[event, dim_map[proj]["y"]],  # type: ignore
                     color="black",
                     label="POCA point",
                 )
