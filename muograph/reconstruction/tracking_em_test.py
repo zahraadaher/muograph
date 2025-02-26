@@ -1,6 +1,8 @@
 from muograph.plotting.voxel import VoxelPlotting
 from muograph.plotting.params import configure_plot_theme, font, tracking_figsize
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from typing import List, Tuple, Union, Optional, Dict, Callable
 import torch
 from torch import Tensor
@@ -19,6 +21,7 @@ N_POINTS_PER_Z_LAYER = 7
 class TrackingEM(VoxelPlotting):
     _xyz_in_out_voi: Optional[Tuple[Tensor, Tensor]] = None
     _triggered_voxels: Optional[List[np.ndarray]] = None
+    _intersection_coordinates: Optional[List[Tensor]] = None
     _path_length_in_out: Optional[Tuple[Tensor, Tensor]] = None
 
     _xyz_enters_voi: Optional[Tensor] = None  # to keep
@@ -124,6 +127,279 @@ class TrackingEM(VoxelPlotting):
             xyz_discrete_in=xyz_discrete_in_out[0],
             xyz_discrete_out=xyz_discrete_in_out[1],
         )
+
+    def _compute_intersection_coordinates(
+        self,
+        voi: Volume,
+        triggered_voxels: List[np.ndarray],
+        xyz_enters_voi: Tensor,
+        xyz_exits_voi: Tensor,
+        tracks_in: Tensor,
+        tracks_out: Tensor,
+        all_poca: Tensor,
+    ) -> Tensor:
+        """
+        A method that retuns the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+          of its triggered voxels inside this volume.
+
+        Args:
+            voi (Volume): the voxelized volume of interest
+            triggered_voxels (List[np.ndarray]): list of the triggered voxels of all muon event of length N_mu (each element of the list has its own lenth, representing the number of voxels that muon has triggered)
+            xyz_enters_voi (Tensor): a tensor with the entry x,y and z coordinates (N_mu, 3)
+            xyz_exits_voi (Tensor): a tensor with the exit x,y and z coordinates (N_mu, 3)
+            tracks_in (Tensor): the unit direction vector of the entering point (N_mu, 3)
+            tracks_out (Tensor): the unit direction vector of the exit point (N_mu, 3)
+            all_poca (Tensor): tensor of the xyz positions of all unfiltered poca events (N_mu, 3). If the poca xyz is (0,0,0),
+              this coresponds to a filtered event.
+
+        Returns:
+            Tensor: tensor of the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+          of its triggered voxels inside this volume (N_mu, )
+        """
+
+        return torch.tensor([0])
+
+    def compute_intersection_coordinates_all_muons(
+        self,
+        voi: Volume,
+        xyz_enters_voi: Tensor,
+        xyz_exits_voi: Tensor,
+        tracks_in: Tensor,
+        tracks_out: Tensor,
+        all_poca: Tensor,
+    ) -> List[Tensor]:
+        """
+        A method that retuns the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+          of its triggered voxels inside this volume.
+
+        Args:
+            voi (Volume): the voxelized volume of interest
+            xyz_enters_voi (Tensor): a tensor with the entry x,y and z coordinates (N_mu, 3)
+            xyz_exits_voi (Tensor): a tensor with the exit x,y and z coordinates (N_mu, 3)
+            tracks_in (Tensor): the unit direction vector of the entering point (N_mu, 3)
+            tracks_out (Tensor): the unit direction vector of the exit point (N_mu, 3)
+            all_poca (Tensor): tensor of the xyz positions of all unfiltered poca events (N_mu, 3). If the poca xyz is (0,0,0),
+              this coresponds to a filtered event.
+
+        Returns:
+            List[Tensor]: a list of tensors, each element represents the xyz coordinates of the intersection points of the muon track inside the volume with the faces
+              of its triggered voxels inside this volume (N_mu, )
+        """
+        # Extract the volume limits to determine the planes' positions (de divisions of the volume into voxels)
+        x_min, y_min, z_min = voi.xyz_min
+        x_max, y_max, z_max = voi.xyz_max
+
+        # Determine the number of voxels along each axis
+        nx, ny, nz = voi.n_vox_xyz
+
+        # Define the coordinate planes along the three axes
+        planes_X = torch.tensor(np.arange(x_min, x_max + nx, voi.vox_width))
+        planes_Y = torch.tensor(np.arange(y_min, y_max + ny, voi.vox_width))
+        planes_Z = torch.tensor(np.arange(z_min, z_max + nz, voi.vox_width))
+
+        # === Compute intersection points with planes for the entering track === #
+        # Expand the coordinate planes for broadcasting with muons
+        planes_X_expand = planes_X.unsqueeze(0)
+        x0_in_expand = xyz_enters_voi[:, 0].unsqueeze(1)
+        x_in_expand = tracks_in[:, 0].unsqueeze(1)
+
+        # Compute intersections with X = constant planes
+        t_coord_X_in = (planes_X_expand - x0_in_expand) / x_in_expand
+        y_coord_X_in = xyz_enters_voi[:, 1].unsqueeze(1) + t_coord_X_in * tracks_in[:, 1].unsqueeze(1)
+        z_coord_X_in = xyz_enters_voi[:, 2].unsqueeze(1) + t_coord_X_in * tracks_in[:, 2].unsqueeze(1)
+        intersection_points_X_in = torch.stack((planes_X_expand.expand_as(y_coord_X_in), y_coord_X_in, z_coord_X_in), dim=-1)
+
+        # Compute intersections with Y = constant planes
+        planes_Y_expand = planes_Y.unsqueeze(0)
+        y0_in_expand = xyz_enters_voi[:, 1].unsqueeze(1)
+        y_in_expand = tracks_in[:, 1].unsqueeze(1)
+        t_coord_Y_in = (planes_Y_expand - y0_in_expand) / y_in_expand
+        x_coord_Y_in = xyz_enters_voi[:, 0].unsqueeze(1) + t_coord_Y_in * tracks_in[:, 0].unsqueeze(1)
+        z_coord_Y_in = xyz_enters_voi[:, 2].unsqueeze(1) + t_coord_Y_in * tracks_in[:, 2].unsqueeze(1)
+        intersection_points_Y_in = torch.stack((x_coord_Y_in, planes_Y_expand.expand_as(x_coord_Y_in), z_coord_Y_in), dim=-1)
+
+        # Compute intersections with Z = constant planes
+        planes_Z_expand = planes_Z.unsqueeze(0)
+        z0_in_expand = xyz_enters_voi[:, 2].unsqueeze(1)
+        z_in_expand = tracks_in[:, 2].unsqueeze(1)
+        t_coord_Z_in = (planes_Z_expand - z0_in_expand) / z_in_expand
+        x_coord_Z_in = xyz_enters_voi[:, 0].unsqueeze(1) + t_coord_Z_in * tracks_in[:, 0].unsqueeze(1)
+        y_coord_Z_in = xyz_enters_voi[:, 1].unsqueeze(1) + t_coord_Z_in * tracks_in[:, 1].unsqueeze(1)
+        intersection_points_Z_in = torch.stack((x_coord_Z_in, y_coord_Z_in, planes_Z_expand.expand_as(x_coord_Z_in)), dim=-1)
+
+        # === Compute intersection points for the exiting track === #
+        x0_out_expand = xyz_exits_voi[:, 0].unsqueeze(1)
+        x_out_expand = tracks_out[:, 0].unsqueeze(1)
+        t_coord_X_out = (planes_X_expand - x0_out_expand) / x_out_expand
+        y_coord_X_out = xyz_exits_voi[:, 1].unsqueeze(1) + t_coord_X_out * tracks_out[:, 1].unsqueeze(1)
+        z_coord_X_out = xyz_exits_voi[:, 2].unsqueeze(1) + t_coord_X_out * tracks_out[:, 2].unsqueeze(1)
+        intersection_points_X_out = torch.stack((planes_X_expand.expand_as(y_coord_X_out), y_coord_X_out, z_coord_X_out), dim=-1)
+
+        y0_out_expand = xyz_exits_voi[:, 1].unsqueeze(1)
+        y_out_expand = tracks_out[:, 1].unsqueeze(1)
+        t_coord_Y_out = (planes_Y_expand - y0_out_expand) / y_out_expand
+        x_coord_Y_out = xyz_exits_voi[:, 0].unsqueeze(1) + t_coord_Y_out * tracks_out[:, 0].unsqueeze(1)
+        z_coord_Y_out = xyz_exits_voi[:, 2].unsqueeze(1) + t_coord_Y_out * tracks_out[:, 2].unsqueeze(1)
+        intersection_points_Y_out = torch.stack((x_coord_Y_out, planes_Y_expand.expand_as(x_coord_Y_out), z_coord_Y_out), dim=-1)
+
+        z0_out_expand = xyz_exits_voi[:, 2].unsqueeze(1)
+        z_out_expand = tracks_out[:, 2].unsqueeze(1)
+        t_coord_Z_out = (planes_Z_expand - z0_out_expand) / z_out_expand
+        x_coord_Z_out = xyz_exits_voi[:, 0].unsqueeze(1) + t_coord_Z_out * tracks_out[:, 0].unsqueeze(1)
+        y_coord_Z_out = xyz_exits_voi[:, 1].unsqueeze(1) + t_coord_Z_out * tracks_out[:, 1].unsqueeze(1)
+        intersection_points_Z_out = torch.stack((x_coord_Z_out, y_coord_Z_out, planes_Z_expand.expand_as(x_coord_Z_out)), dim=-1)
+
+        # Combine all intersection points for each track
+        total_intersection_points_in = torch.cat((intersection_points_X_in, intersection_points_Y_in, intersection_points_Z_in), dim=1)
+        total_intersection_points_out = torch.cat((intersection_points_X_out, intersection_points_Y_out, intersection_points_Z_out), dim=1)
+
+        # Compute masks based on enter, exit and POCA position
+        z_inicial = xyz_enters_voi[:, 2].unsqueeze(1)
+        z_final = xyz_exits_voi[:, 2].unsqueeze(1)
+        z_POCA = all_poca[:, 2].unsqueeze(1)
+
+        mask_in = (total_intersection_points_in[:, :, 2] <= z_inicial) & (total_intersection_points_in[:, :, 2] >= z_POCA)
+        mask_out = (total_intersection_points_out[:, :, 2] <= z_POCA) & (total_intersection_points_out[:, :, 2] >= z_final)
+
+        # Apply masks and concatenate intersections for each muon
+        final_points = []
+        for i in range(len(all_poca)):
+            filtered_points_in = total_intersection_points_in[i][mask_in[i]]
+            filtered_points_out = total_intersection_points_out[i][mask_out[i]]
+            muon_points = torch.cat((filtered_points_in, filtered_points_out), dim=0)
+            ordered_muon_points = muon_points[torch.argsort(muon_points[:, 2], descending=True)]  # Ordenamos Z después de concatenar
+            final_points.append(ordered_muon_points)
+
+        return final_points
+
+    def draw_cube(self, ax: Axes3D, center: Tensor, side: float, color: str = "blue", alpha: float = 0.1) -> None:
+        """Dibuja un cubo 3D centrado en `center` con longitud de lado `side`"""
+        x, y, z = center
+        s = side / 2  # Mitad del lado
+
+        # Definir los 8 vértices del cubo
+        vertices = np.array(
+            [
+                [x - s, y - s, z - s],
+                [x + s, y - s, z - s],
+                [x + s, y + s, z - s],
+                [x - s, y + s, z - s],
+                [x - s, y - s, z + s],
+                [x + s, y - s, z + s],
+                [x + s, y + s, z + s],
+                [x - s, y + s, z + s],
+            ]
+        )
+
+        # Definir las 6 caras del cubo
+        faces = [
+            [vertices[j] for j in [0, 1, 2, 3]],  # Inferior
+            [vertices[j] for j in [4, 5, 6, 7]],  # Superior
+            [vertices[j] for j in [0, 1, 5, 4]],  # Frontal
+            [vertices[j] for j in [2, 3, 7, 6]],  # Trasera
+            [vertices[j] for j in [0, 3, 7, 4]],  # Izquierda
+            [vertices[j] for j in [1, 2, 6, 5]],  # Derecha
+        ]
+
+        # Crear colección de polígonos para el cubo
+        cube = Poly3DCollection(faces, alpha=alpha, edgecolor="k")
+        cube.set_facecolor(color)
+        ax.add_collection3d(cube)  # type: ignore
+
+    def plot_3D_inters_all_muons(self, num_muons: int) -> None:
+        """
+        Plots the trajectories of multiple muons along with their intersection points in 3D.
+
+        Args:
+            num_muons (int): Number of muons to plot.
+        """
+        # Randomly select `num_muons` events from available data
+        num_events = np.random.choice(self.xyz_enters_voi.size(0), num_muons, replace=False)
+        print(num_events)
+
+        # Create an interactive 3D figure
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection="3d")
+
+        # Define distinct colors for each muon trajectory
+        colores = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+
+        # Iterate over selected muon events
+        for i, event in enumerate(num_events):
+            intersection_points = self._intersection_coordinates[event]  # Tensor con puntos de intersección (3)
+
+            # Retrieve key points for each muon
+            entry_point = self.xyz_enters_voi[event]
+            exit_point = self.xyz_exits_voi[event]
+            poca_point = self.all_poca[event]
+
+            # Assign a unique color for each muon track
+            muons_colors = colores[i % len(colores)]
+
+            # === Plot the incoming and outgoing trajectory === #
+            # Incoming track (entry to POCA)
+            ax.plot(
+                [entry_point[0], poca_point[0]],
+                [entry_point[1], poca_point[1]],
+                [entry_point[2], poca_point[2]],
+                color=muons_colors,
+                linestyle="-",
+                label=f"Muon {i} - Incoming",
+                alpha=0.6,
+            )
+
+            # Outgoing track (POCA to exit)
+            ax.plot(
+                [poca_point[0], exit_point[0]],
+                [poca_point[1], exit_point[1]],
+                [poca_point[2], exit_point[2]],
+                color=muons_colors,
+                linestyle="--",
+                alpha=0.6,
+            )
+
+            # === Plot intersection points (where muon interacts with voxel faces) === #
+            # ax.scatter(intersection_points[i][:, 0], intersection_points[i][:, 1], intersection_points[i][:, 2], color=color_traza, marker=".", label=f"Muon {i} - Intersections")
+            ax.scatter(intersection_points[:, 0], intersection_points[:, 1], intersection_points[:, 2], color=muons_colors, marker=".", edgecolors="black")
+
+            # === Mark key points (entry, exit, and POCA) === #
+            # ax.scatter(*entry_point, color=color_traza, marker="v", edgecolors='black')
+            # ax.scatter(*exit_point, color=color_traza, marker="^", edgecolors='black')
+            # # ax.scatter(*poca_point, color="black", marker="o", label=f"Muon {i} - POCA")
+            # ax.scatter(*poca_point, color="black", marker="o")
+            ax.scatter(entry_point[0], entry_point[1], entry_point[2], color=muons_colors, marker="v", edgecolors="black")
+            ax.scatter(exit_point[0], exit_point[1], exit_point[2], color=muons_colors, marker="^", edgecolors="black")
+            # ax.scatter(*poca_point, color="black", marker="o", label=f"Muon {i} - POCA")
+            ax.scatter(poca_point[0], poca_point[1], poca_point[2], color="black", marker="o")
+
+            # === Draw triggered voxels === #
+            if self.triggered_voxels[event].shape[0] > 0:
+                for i, vox_idx in enumerate(self.triggered_voxels[event]):
+                    ix, iy, iz = vox_idx  # Indices in the Volume of Interest (VOI)
+                    voxel_center = self.voi.voxel_centers[ix, iy, iz]
+                    self.draw_cube(ax, center=voxel_center, side=self.voi.vox_width, color=muons_colors, alpha=0.2)
+
+        # === Define volume limits for the plot === #
+        x_min, x_max = -450, 450
+        y_min, y_max = -300, 300
+        z_min, z_max = -1500, -900
+
+        # Set axis labels
+        ax.set_xlabel("X [mm]")
+        ax.set_ylabel("Y [mm]")
+        ax.set_zlabel("Z [mm]")  # type: ignore[attr-defined]
+        ax.set_title(f"{num_muons} muons")
+
+        # Adjust plot limits to cover the full volume
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_zlim(z_min, z_max)  # type: ignore[attr-defined]
+
+        # Display legend
+        ax.legend()
+
+        # Show the 3D plot
+        plt.show()
 
     @staticmethod
     def compute_path_length_in_out(
@@ -257,10 +533,10 @@ class TrackingEM(VoxelPlotting):
 
         # Plot POCA point
         if self.poca is not None:
-            if self.all_poca[event, dim_map[proj]["x"]] != 0:
+            if self.all_poca[event, dim_map[proj]["x"]] != 0:  # type: ignore
                 ax.scatter(
-                    x=self.all_poca[event, dim_map[proj]["x"]],
-                    y=self.all_poca[event, dim_map[proj]["y"]],
+                    x=self.all_poca[event, dim_map[proj]["x"]],  # type: ignore
+                    y=self.all_poca[event, dim_map[proj]["y"]],  # type: ignore
                     color="black",
                     label="POCA point",
                 )
@@ -382,6 +658,13 @@ class TrackingEM(VoxelPlotting):
 
         return all_poca
 
+    # @staticmethod
+    # def get_intersection_coordinates(poca: POCA, tracking: TrackingMST) -> Tensor:
+    #     intersection_coordinates = torch.zeros_like(tracking.tracks_in, device=tracking.tracks_in.device)
+    #     intersection_coordinates[poca.full_mask] = poca.poca_points
+
+    #     return intersection_coordinates
+
     @property
     def xyz_in_out_voi(self) -> Tuple[Tensor, Tensor]:
         """
@@ -452,3 +735,17 @@ class TrackingEM(VoxelPlotting):
         if self._all_poca is None:
             self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
         return self._all_poca
+
+    @property
+    def intersection_coordinates(self) -> List[Tensor]:
+        """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
+        if self._intersection_coordinates is None:
+            self._intersection_coordinates = self.compute_intersection_coordinates_all_muons(
+                voi=self.voi,
+                xyz_enters_voi=self._xyz_enters_voi,
+                xyz_exits_voi=self._xyz_exits_voi,
+                tracks_in=self.tracking.tracks_in,
+                tracks_out=self.tracking.tracks_out,
+                all_poca=self._all_poca,
+            )
+        return self._intersection_coordinates
