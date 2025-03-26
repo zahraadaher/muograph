@@ -34,6 +34,8 @@ class TrackingEM(VoxelPlotting):
 
     _M_voxels: Optional[Tensor] = None  # is the number of muons hitting the each voxel (Nx, Ny, Nz)
 
+    _W: Optional[Tensor] = None  # weight matrix
+
     def __init__(self, voi: Volume, tracking: TrackingMST, n_events: int = 1000, batch_size: int = 100, muon_path: str = "poca") -> None:
         # The voxelized volume of inetrest
         self.voi = voi
@@ -499,11 +501,28 @@ class TrackingEM(VoxelPlotting):
         filtered_points_in = total_intersection_points_in[mask_in]
         filtered_points_out = total_intersection_points_out[mask_out]
 
-        # Concatenar puntos y ordenar por coordenada Z
+        # Concatenate and order by z coordinate
         muon_points = torch.cat((filtered_points_in, filtered_points_out), dim=0)
         ordered_muon_points = muon_points[torch.argsort(muon_points[:, 2], descending=True)]
+        print(f"Tamaño numero de puntos interseccion: {ordered_muon_points.size()[0]}")
 
-        return ordered_muon_points
+        # Some intersections might be very close to each other (for expample if the intersection point is right at the corner of the voxel)
+        # Define a small tolerance to consider points as duplicates
+        tolerance = 1  # Adjust based on required precision
+
+        # Compute the difference between consecutive points
+        diffs = torch.norm(ordered_muon_points[1:] - ordered_muon_points[:-1], dim=1)
+        print(f"Diferencias: {diffs}")
+
+        # Keep the first point and those whose difference with the previous one is greater than the tolerance
+        mask = torch.cat((torch.tensor([True], device=diffs.device), diffs > tolerance))
+
+        # Filter out redundant points
+        filtered_muon_points = ordered_muon_points[mask]
+        print(f"\tTamaño numero de puntos interseccion: {filtered_muon_points.size()[0]}")
+
+        return filtered_muon_points
+        # return ordered_muon_points
 
     def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume) -> Tensor:
         if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points doesn't trigger any voxels
@@ -516,11 +535,16 @@ class TrackingEM(VoxelPlotting):
             x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
             y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
             z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
+            # Si pongo .round() empeoro la situacion porque caluclo menos voxels aun
+            # x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
+            # y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
+            # z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
 
             indices = torch.stack([x_idx, y_idx, z_idx], dim=1)
 
             # We keep the tensor (Ni, 3) and append it to the list
-            triggered_voxels_list = torch.unique(torch.stack([x_idx, y_idx, z_idx], dim=1), dim=0)
+            # triggered_voxels_list = torch.unique(torch.stack([x_idx, y_idx, z_idx], dim=1), dim=0)
+            triggered_voxels_list = torch.stack([x_idx, y_idx, z_idx], dim=1)
 
             # Convert indices to a format suitable for scatter_add_
             flat_indices = indices.T  # Convert to list of indices per dimension
@@ -551,28 +575,42 @@ class TrackingEM(VoxelPlotting):
 
             if YNprint:
                 if (
-                    sum(L) == T[0]
+                    sum(L).round() == T[0].round()
                 ):  # this means the sum of every L-length equals to the first T-length calculated (the 1º one corresponds to the entire trace within the volumen)
-                    print("Good")
-                    print(sum(L), T[0])
-                    print(self.all_poca[idx])
+                    print(f"--> GOOD muon {idx}")
+                    # print(sum(L), T[0])
+                    # print(self.all_poca[idx])
 
                 else:
-                    print("NOT right")
+                    print(f"* muon {idx} NOT right")
                     print(sum(L), T[0])
                     print(self.all_poca[idx])
 
         return path_length_LT
 
-    def compute_weight_matrix(self) -> None:
+    def _compute_weight_matrix(self, voxels: Tensor, LT: Tensor, idx: int) -> None:
         """
-        Compute the weight matrix W for the Expectation-Maximization algorithm.
-        This matrix represents the contribution of each voxel to the scattering process.
+        Calcula la matriz de pesos W para el algoritmo de Expectación-Maximización.
         """
-        Ni, Nj, Nk = self.voi.n_vox_xyz  # Voxel grid dimensions
-        n_events = len(self._valid_poca)  # Only use valid POCA points
 
-        self.W = torch.zeros(n_events, Ni, Nj, Nk, 2, 2, device=self._valid_poca.device)  # Weight matrix
+        if len(voxels) > 0 and len(LT) > 0:
+            L = LT[:, 0].float()  # Convertir a float32
+            T = LT[:, 1].float()  # Convertir a float32
+
+            # Índices de los voxeles en el grid
+            x_idx, y_idx, z_idx = voxels[:, 0], voxels[:, 1], voxels[:, 2]
+
+            # Calcular los elementos de W
+            self._W[idx, x_idx, y_idx, z_idx, 0, 0] = L
+            self._W[idx, x_idx, y_idx, z_idx, 0, 1] = (L**2) / 2 + L * T
+            self._W[idx, x_idx, y_idx, z_idx, 1, 0] = (L**2) / 2 + L * T
+            self._W[idx, x_idx, y_idx, z_idx, 1, 1] = (L**3) / 3 + (L**2) * T + L * (T**2)
+
+            # if idx == 1:
+            #     print(self._W[idx, x_idx, y_idx, z_idx, 0, 0],
+            #             self._W[idx, x_idx, y_idx, z_idx, 0, 1],
+            #             self._W[idx, x_idx, y_idx, z_idx, 1, 0],
+            #             self._W[idx, x_idx, y_idx, z_idx, 1, 1])
 
     def process_all_muons(self) -> None:
         """
@@ -587,6 +625,8 @@ class TrackingEM(VoxelPlotting):
         triggered_voxels_BETA_list = []
         path_length_LT_list = []
 
+        Ni, Nj, Nk = self.voi.n_vox_xyz  # Dimensiones del grid de voxeles
+
         # Identify problematic muons (with POCA at [0,0,0])
         problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
 
@@ -597,6 +637,11 @@ class TrackingEM(VoxelPlotting):
         self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
         self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
 
+        n_events = len(self._valid_poca)  # Número de muones válidos
+        # Inicializar W con ceros
+        self._W = torch.zeros(n_events, Ni, Nj, Nk, 2, 2, device=self._valid_poca.device)
+
+        lista_muones_malos = []
         # Iterate over all muons
         for i in range(len(self._valid_poca)):
             # Step 1: Compute intersections
@@ -611,12 +656,23 @@ class TrackingEM(VoxelPlotting):
 
             # Step 3: Compute L and T path lengths
             L_T_values = self._compute_L_T_length(intersec_coords, i)
+
+            if L_T_values.size()[0] != triggered_voxels.size()[0]:
+                print(f"NO coincidencia de los path y los voxels para el muon {i}")
+                lista_muones_malos.append(i)
+                print(f"Bucle (L y T): {L_T_values.size()}")
+                print(f"Bucle (trigg): {triggered_voxels.size()}")
+                print(L_T_values)
             path_length_LT_list.append(L_T_values)
+
+            # Step 4:
+            # self._compute_weight_matrix(triggered_voxels, L_T_values, i)
 
         # Store the computed values in object attributes
         self._intersection_coordinates = intersection_coordinates_list
         self._triggered_voxels_BETA = triggered_voxels_BETA_list
         self._path_length_LT = path_length_LT_list
+        # print(lista_muones_malos)
 
     # ---------------------------- #
     #                              #
@@ -886,10 +942,10 @@ class TrackingEM(VoxelPlotting):
         }
 
         # Data numpy
-        points_in_np = self.tracking.points_in.detach().cpu().numpy()
-        points_out_np = self.tracking.points_out.detach().cpu().numpy()
-        track_in_np = self.tracking.tracks_in.detach().cpu().numpy()[event]
-        track_out_np = self.tracking.tracks_out.detach().cpu().numpy()[event]
+        points_in_np = self._valid_xyz_enters_voi.detach().cpu().numpy()
+        points_out_np = self._valid_xyz_exits_voi.detach().cpu().numpy()
+        track_in_np = self._valid_tracks_in.detach().cpu().numpy()[event]
+        track_out_np = self._valid_tracks_out.detach().cpu().numpy()[event]
 
         # Y span
         y_span = abs(points_in_np[event, 2] - points_out_np[event, 2])
@@ -898,10 +954,10 @@ class TrackingEM(VoxelPlotting):
 
         # Plot POCA point
         if self.poca is not None:
-            if self.all_poca[event, dim_map[proj]["x"]] != 0:  # type: ignore
+            if self._valid_poca[event, dim_map[proj]["x"]] != 0:  # type: ignore
                 ax.scatter(
-                    x=self.all_poca[event, dim_map[proj]["x"]],  # type: ignore
-                    y=self.all_poca[event, dim_map[proj]["y"]],  # type: ignore
+                    x=self._valid_poca[event, dim_map[proj]["x"]],  # type: ignore
+                    y=self._valid_poca[event, dim_map[proj]["y"]],  # type: ignore
                     color="black",
                     label="POCA point",
                 )
@@ -917,8 +973,8 @@ class TrackingEM(VoxelPlotting):
             # )
 
             ax.scatter(
-                x=self.xyz_enters_voi[event, dim_map[proj]["x"]],  # type: ignore
-                y=self.xyz_enters_voi[event, dim_map[proj]["y"]],  # type: ignore
+                x=self._valid_xyz_enters_voi[event, dim_map[proj]["x"]],  # type: ignore
+                y=self._valid_xyz_enters_voi[event, dim_map[proj]["y"]],  # type: ignore
                 color="red",
                 label=r"Track$_{in}$ entry point",
                 marker="x",
@@ -945,8 +1001,8 @@ class TrackingEM(VoxelPlotting):
             # )
 
             ax.scatter(
-                x=self.xyz_exits_voi[event, dim_map[proj]["x"]],  # type: ignore
-                y=self.xyz_exits_voi[event, dim_map[proj]["y"]],  # type: ignore
+                x=self._valid_xyz_exits_voi[event, dim_map[proj]["x"]],  # type: ignore
+                y=self._valid_xyz_exits_voi[event, dim_map[proj]["y"]],  # type: ignore
                 color="green",
                 label=r"Track$_{out}$ entry point",
                 marker="x",
@@ -1168,3 +1224,10 @@ class TrackingEM(VoxelPlotting):
     def valid_poca(self) -> Tensor:
         """The POCA points inside the volume"""
         return self._valid_poca
+
+    @property
+    def W(self) -> Tensor:
+        """Weight matrix"""
+        if self._W is None or not self._W.all():
+            self.process_all_muons()
+        return self._W
