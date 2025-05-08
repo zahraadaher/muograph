@@ -59,6 +59,381 @@ class TrackingEM(VoxelPlotting):
 
         self.M_voxels = self.set_M_voxels()
 
+        self.verify = False
+
+        self.momentum = self.poca.tracks.E
+
+        # self.valid_muons()
+
+    def valid_muons(self) -> None:
+        # ¡¡¡¡ CUIDADO !!!!
+        self.verify = True  # una vez que hacemos el filtrado, y ano hace falta volver a hacerlo mas veces (ver el resto de funciones)
+
+        if self._all_poca is None:
+            self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
+
+        if self._xyz_enters_voi is None:
+            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.tracking.theta_xy_in, pm=-1)
+
+        if self._xyz_exits_voi is None:
+            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.tracking.theta_xy_out, pm=1)
+
+        # Identify problematic muons (with POCA at [0,0,0])
+        problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
+
+        # Filter out problematic POCA points
+        self._valid_poca = self._all_poca[~problematic_muons_mask]  # Keeps only valid POCA points
+        self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask]
+        self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask]
+        self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
+        self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
+
+        self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask]
+        self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask]
+
+        # self.poca.tracks.E # es la energía cinética del muon, no hace falta hacerle el masking
+
+    def _compute_intersection_coordinates(self, voi: Volume, xyz_point: Tensor, xyz_poca: Tensor, incoming: bool = True) -> Tensor:
+        # We need the direction
+        if incoming:
+            track = xyz_point - xyz_poca
+            z_inicial = xyz_point[2]  # Mask (see below)
+            z_final = xyz_poca[2]  # Mask (see below)
+        else:
+            track = xyz_poca - xyz_point
+            z_inicial = xyz_poca[2]  # Mask (see below)
+            z_final = xyz_point[2]  # Mask (see below)
+
+        # Extract the volume limits to determine the planes' positions (de divisions of the volume into voxels)
+        x_min, y_min, z_min = voi.xyz_min
+        x_max, y_max, z_max = voi.xyz_max
+
+        # Determine the number of voxels along each axis
+        nx, ny, nz = voi.n_vox_xyz
+
+        # Define the coordinate planes along the three axes
+        self.planes_X = torch.tensor(np.arange(x_min, x_max + nx, voi.vox_width))  # (nx)
+        self.planes_Y = torch.tensor(np.arange(y_min, y_max + ny, voi.vox_width))  # (ny)
+        self.planes_Z = torch.tensor(np.arange(z_min, z_max + nz, voi.vox_width))  # (nz)
+
+        # === Compute intersection points with planes for the entering track === #
+
+        # Compute intersections with X = constant planes
+        t_coord_X_in = (self.planes_X - xyz_point[0]) / track[0]
+        y_coord_X_in = xyz_point[1] + t_coord_X_in * track[1]
+        z_coord_X_in = xyz_point[2] + t_coord_X_in * track[2]
+        intersection_points_X_in = torch.stack((self.planes_X, y_coord_X_in, z_coord_X_in), dim=-1)
+
+        # Compute intersections with Y = constant planes
+        t_coord_Y_in = (self.planes_Y - xyz_point[1]) / track[1]
+        x_coord_Y_in = xyz_point[0] + t_coord_Y_in * track[0]
+        z_coord_Y_in = xyz_point[2] + t_coord_Y_in * track[2]
+        intersection_points_Y_in = torch.stack((x_coord_Y_in, self.planes_Y, z_coord_Y_in), dim=-1)
+
+        # Compute intersections with Z = constant planes
+        t_coord_Z_in = (self.planes_Z - xyz_point[2]) / track[2]
+        x_coord_Z_in = xyz_point[0] + t_coord_Z_in * track[0]
+        y_coord_Z_in = xyz_point[1] + t_coord_Z_in * track[1]
+        intersection_points_Z_in = torch.stack((x_coord_Z_in, y_coord_Z_in, self.planes_Z), dim=-1)
+
+        # Combine all intersection points for each track
+        total_intersection_points = torch.cat((intersection_points_X_in, intersection_points_Y_in, intersection_points_Z_in), dim=0)
+
+        # Compute masks based on enter, exit and POCA position
+        mask = (total_intersection_points[:, 2] <= z_inicial) & (total_intersection_points[:, 2] >= z_final)
+
+        filtered_points = total_intersection_points[mask]
+
+        # Concatenate and order by z coordinate
+        ordered_muon_points = filtered_points[torch.argsort(filtered_points[:, 2], descending=True)]
+        # print(f"Tamaño numero de puntos interseccion: {ordered_muon_points.size()[0]}")
+
+        # Some intersections might be very close to each other (for expample if the intersection point is right at the corner of the voxel)
+        # Define a small tolerance to consider points as duplicates
+        tolerance = 0.01 * voi.vox_width
+
+        # Compute the difference between consecutive points
+        diffs = torch.norm(ordered_muon_points[1:] - ordered_muon_points[:-1], dim=1)
+        # print(f"Diferencias: {diffs}")
+
+        # Keep the first point and those whose difference with the previous one is greater than the tolerance
+        mask = torch.cat((torch.tensor([True], device=diffs.device), diffs > tolerance))
+
+        # Filter out redundant points
+        filtered_muon_points = ordered_muon_points[mask]
+        # print(f"\tTamaño numero de puntos interseccion: {filtered_muon_points.size()[0]}")
+
+        return filtered_muon_points
+
+    def get_intersection_coordinates(self) -> List[Tensor]:
+        """
+        Computes the intersection coordinates for all muons. this function goes through all the muons
+
+        Returns:
+            List[Tensor]: is a list of N_muons elements and each element is a tensor with the correspondenting interseccion point coordenates xyz, includin the poca
+        """
+        if not self.verify:  # si es la primera vez que hacemos valid_muons
+            self.valid_muons()
+        intersection_coordinates_list = []
+        for i in range(len(self._valid_poca)):
+            # Compute intersections for the incoming segment
+            intersec_coords_in = self._compute_intersection_coordinates(voi=self.voi, xyz_point=self._valid_xyz_enters_voi[i], xyz_poca=self._valid_poca[i])
+            # We incorporate de poca point at the end
+            intersec_coords_in_poca = torch.cat((intersec_coords_in, self._valid_poca[i].unsqueeze(0)), dim=0)
+
+            # Compute intersections for the outgoing segment
+            intersec_coords_out = self._compute_intersection_coordinates(
+                voi=self.voi, xyz_point=self._valid_xyz_exits_voi[i], xyz_poca=self._valid_poca[i], incoming=False
+            )
+
+            # Concatenate both segments
+            intersection_coordinates_poca = torch.cat((intersec_coords_in_poca, intersec_coords_out), dim=0)
+            intersection_coordinates_list.append(intersection_coordinates_poca)
+        return intersection_coordinates_list
+
+    def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume, idx: int) -> Tensor:
+        if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points doesn't trigger any voxels
+            triggered_voxels = torch.empty((0, 3), dtype=torch.int32)
+        else:
+            # We calculate the point in between the two intersection points
+            points_mid = (muon_intersection_coordinates[:-1] + muon_intersection_coordinates[1:]) / 2
+
+            # Now we transform the coordinates of that middle point into the indices of the triggered voxel
+            x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
+            y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
+            z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
+            # Si pongo .round() empeoro la situacion porque caluclo menos voxels aun
+            # x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
+            # y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
+            # z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
+
+            indices = torch.stack([x_idx, y_idx, z_idx], dim=1)
+
+            # Flatten cada fila en un número único para encontrar duplicados
+            # indices_flat = indices.flatten(start_dim=1)
+            # print('flatten indices: ', indices_flat)
+            # Lo que estoy haciendo aqui es poner los tres indices del voxel en un numero: x en los millones, y en lo smiles y z en las unidades, de esta manera puedo comparar los numeros mejor
+            # keys = indices_flat[:, 0] * 1_000_000 + indices_flat[:, 1] * 1_000 + indices_flat[:, 2]
+            keys = indices[:, 0] * 1_000_000 + indices[:, 1] * 1_000 + indices[:, 2]
+
+            # print('Creando claves')
+            # Método manual para conseguir primeras apariciones
+            seen = {}
+            idx_first_list = []  # va a tener los indices de los primeros voxels, no toma las repeticiones
+            for idx, key in enumerate(keys.tolist()):
+                if key not in seen:  # si este voxel no lo hemos visto antes
+                    seen[key] = idx  # entonces lo guardamos en el diccionario
+                    idx_first_list.append(idx)  # Guardamos el índice de la primera aparición
+
+            idx_first = torch.tensor(idx_first_list, dtype=torch.long, device=indices.device)
+
+            # Mapeo de key a su índice único
+            # Asocia a cada key (que es único) un número 0, 1, 2, ..., K-1.
+            # mapped_indices es simplemente a qué grupo pertenece cada voxel original.
+            # cuando haya un voxel repetido, las dos posiciones en las que aparece en el tensor original van a pertenecer al mismo grupo
+            key_to_idx = {keys[i].item(): idx for idx, i in enumerate(idx_first)}
+            mapped_indices = torch.tensor([key_to_idx[key.item()] for key in keys], device=indices.device)
+            # print('Mapeo finalizado')
+
+            # Crear tensor donde acumularemos
+            # new_counts = torch.zeros(len(idx_first), dtype=torch.int32, device=indices.device)
+            # new_counts.scatter_add_(0, mapped_indices, torch.ones_like(mapped_indices, dtype=torch.int32))
+
+            # Voxels únicos
+            triggered_voxels = indices[idx_first]  # esto ya es un tensor
+
+            # Ahora acumulamos sobre self._M_voxels
+            # Convert indices to a format suitable for scatter_add_
+            flat_indices = indices.T  # Convert to list of indices per dimension
+
+            # Increment volume at given indices
+            self._M_voxels.index_put_(tuple(flat_indices), self._M_voxels[tuple(flat_indices)] + 1)
+
+            # Hit
+            # indices_for_hit = torch.stack([x_idx, y_idx, z_idx], dim=1)
+            self.Hit[idx].index_put_(tuple(indices.T), self.Hit[idx][tuple(indices.T)] + 1)
+
+            # Defino estas cosas par poder utilizarlos tambien en la funcion de calculo de L y T
+            self._idx_first = idx_first
+            self._mapped_indices = mapped_indices
+
+            # print('Numero de voxels activados:',len(triggered_voxels))
+            # print('Mappeo de indices: ',len(mapped_indices))
+
+        # return triggered_voxels_list
+        return triggered_voxels
+
+    def get_triggered_voxels(self) -> List[Tensor]:
+        """
+        Computes the triggered voxels for each muon.
+        """
+        if not self.verify:  # si es la primera vez que hacemos valid_muons
+            self.valid_muons()
+
+        if self._intersection_coordinates is None:
+            self._intersection_coordinates = self.get_intersection_coordinates()
+        triggered_voxels_list = []
+        # estas dos variables las voy a necesitar para despues hacer los L y T paths
+        self._idx_first_list = []
+        self._mapped_indices_list = []
+
+        self.Hit = torch.zeros(len(self._valid_poca), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
+
+        for i in range(len(self._valid_poca)):
+            # print(' -> Muon ', i)
+            triggered_voxels = self._compute_triggered_voxels(self._intersection_coordinates[i], self.voi, idx=i)  # No repeated voxels
+            triggered_voxels_list.append(triggered_voxels)
+            self._idx_first_list.append(self._idx_first)
+            self._mapped_indices_list.append(self._mapped_indices)
+
+        return triggered_voxels_list
+
+    def _compute_L_T_length(self, muon_intersection_coordinates: Tensor, muon_idx_first: Tensor, muon_mapped_indices: Tensor) -> Tuple[Tensor, Tensor]:
+        if muon_intersection_coordinates.shape[0] < 2:
+            path_length_L = torch.empty((0,), dtype=torch.float32)
+            path_length_T = torch.empty((0,), dtype=torch.float32)
+        else:
+            diffs_L = muon_intersection_coordinates[:-1] - muon_intersection_coordinates[1:]
+            L = torch.norm(diffs_L, dim=1)
+            # print('Longitud de L: ', len(L))
+
+            last_point = muon_intersection_coordinates[-1].unsqueeze(0)
+            diffs_T = muon_intersection_coordinates[:-1] - last_point
+            T = torch.norm(diffs_T, dim=1)
+
+            # Acumular L
+            path_length_L = torch.zeros(muon_idx_first.shape[0], dtype=L.dtype, device=L.device)
+            # print(f'L = {L}')
+            path_length_L.scatter_add_(0, muon_mapped_indices, L)  # sumamos los L's que pertenecen al mismo voxel
+            # print(f'Despues: {path_length_L}')
+
+            # T: solo primer valor
+            path_length_T = T[muon_idx_first]
+
+        return path_length_L, path_length_T
+
+    def get_L_T_pathlength(self) -> Tuple[List[Tensor], List[Tensor]]:
+        if not self.verify:  # si es la primera vez que hacemos valid_muons
+            self.valid_muons()
+
+        if self._intersection_coordinates is None:
+            self._intersection_coordinates = self.get_intersection_coordinates()
+
+        if self._triggered_voxels is None:
+            self._triggered_voxels = self.get_triggered_voxels()
+
+        L = []
+        T = []
+        for i in range(len(self._valid_poca)):
+            # print(' -> Muon ', i)
+            _L, _T = self._compute_L_T_length(
+                self._intersection_coordinates[i], muon_idx_first=self._idx_first_list[i], muon_mapped_indices=self._mapped_indices_list[i]
+            )
+            L.append(_L)
+            T.append(_T)
+
+        return L, T
+
+    def _compute_weight_matrix(self, voxels: Tensor, L: Tensor, T: Tensor, idx: int) -> None:
+        """
+        Calcula la matriz de pesos W para el algoritmo de Expectación-Maximización.
+        """
+
+        if len(voxels) > 0 and len(L) > 0:
+            L = L.float()  # Convertir a float32
+            T = T.float()  # Convertir a float32
+
+            # Índices de los voxeles en el grid
+            x_idx, y_idx, z_idx = voxels[:, 0], voxels[:, 1], voxels[:, 2]
+
+            # Calcular los elementos de W
+            self._W[idx, x_idx, y_idx, z_idx, 0, 0] = L
+            self._W[idx, x_idx, y_idx, z_idx, 0, 1] = (L**2) / 2 + L * T
+            self._W[idx, x_idx, y_idx, z_idx, 1, 0] = (L**2) / 2 + L * T
+            self._W[idx, x_idx, y_idx, z_idx, 1, 1] = (L**3) / 3 + (L**2) * T + L * (T**2)
+
+    def get_weight_matrix(self) -> None:
+        if not self.verify:  # si es la primera vez que hacemos valid_muons
+            self.valid_muons()
+
+        if self._intersection_coordinates is None:
+            self._intersection_coordinates = self.get_intersection_coordinates()
+
+        if self._triggered_voxels is None:
+            self._triggered_voxels = self.get_triggered_voxels()
+
+        if self._L is None or self.T is None:
+            self._L, self._T = self.get_L_T_pathlength()
+
+        Ni, Nj, Nk = self.voi.n_vox_xyz
+        n_events = len(self._valid_poca)
+        self._W = torch.zeros(n_events, Ni, Nj, Nk, 2, 2, device=self._valid_poca.device)
+
+        for i in range(len(self._valid_poca)):
+            self._compute_weight_matrix(self._triggered_voxels[i], self._L[i], self._T[i], i)
+
+    def _compute_observed_data(self, idx: int) -> None:
+        """
+        Computes the differences in thetas and path lengths in x and y directions for muons.
+
+        Returns:
+            Dx and Dy: tensors of shape (num_muons, 2),
+                    where [:,0] is the delta theta (angle change)
+                    and [:,1] is the corrected observable.
+        """
+
+        # print("Computing observed data: (Dx and Dy)")
+
+        # Puntos de entrada y salida
+        x0, y0, z0 = self._valid_xyz_enters_voi[idx]
+        x1, y1, z1 = self._valid_xyz_exits_voi[idx]
+
+        # Ángulos en entrada y salida
+        theta_x_in = self._valid_theta_in[idx, 0]  # Ángulo en el plano XZ
+        theta_y_in = self._valid_theta_in[idx, 1]  # Ángulo en el plano YZ
+        theta_x_out = self._valid_theta_out[idx, 0]
+        theta_y_out = self._valid_theta_out[idx, 1]
+
+        # theta_x_in = self.tracking.tracks_in[i, 0]  # Ángulo en el plano XZ
+        # theta_y_in = self.tracking.tracks_in[i, 1]  # Ángulo en el plano YZ
+        # theta_x_out = self.tracking.tracks_out[i, 0]
+        # theta_y_out = self.tracking.tracks_out[i, 1]
+
+        # Cálculo de diferencias de ángulo
+        delta_theta_x = theta_x_out - theta_x_in
+        delta_theta_y = theta_y_out - theta_y_in
+
+        # Longitud del trayecto normalizado
+        Lxy = torch.sqrt(1 + torch.tan(theta_x_in) ** 2 + torch.tan(theta_y_in) ** 2)
+
+        # Coordenadas proyectadas
+        xp = x0 + torch.tan(theta_x_in) * torch.abs(z0 - z1)
+        yp = y0 + torch.tan(theta_y_in) * torch.abs(z0 - z1)
+
+        # Correcciones delta-theta
+        delta_theta_x_comp = (x1 - xp) * Lxy * torch.cos(theta_x_in) * torch.cos(theta_x_out) / torch.cos(delta_theta_x)
+        delta_theta_y_comp = (y1 - yp) * Lxy * torch.cos(theta_y_in) * torch.cos(theta_y_out) / torch.cos(delta_theta_y)
+
+        # Guardar en los tensores
+        self._Dx[idx, 0] = delta_theta_x
+        self._Dx[idx, 1] = delta_theta_x_comp
+        self._Dy[idx, 0] = delta_theta_y
+        self._Dy[idx, 1] = delta_theta_y_comp
+
+    def get_observed_data(self) -> Tuple[Tensor, Tensor]:
+        if not self.verify:  # si es la primera vez que hacemos valid_muons
+            self.valid_muons()
+
+        n_events = len(self._valid_poca)  # Number of valid muons
+
+        self._Dx = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
+        self._Dy = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
+
+        for i in range(len(self._valid_poca)):
+            self._compute_observed_data(idx=i)
+
+        return self._Dx, self._Dy
+
     # Ignore this functions
     # @staticmethod
     # def _find_triggered_voxels(
@@ -530,78 +905,6 @@ class TrackingEM(VoxelPlotting):
     # New version of the functions #
     # ---------------------------- #
 
-    def _compute_intersection_coordinates(self, voi: Volume, xyz_point: Tensor, xyz_poca: Tensor, incoming: bool = True) -> Tensor:
-        # We need the direction
-        if incoming:
-            track = xyz_point - xyz_poca
-            z_inicial = xyz_point[2]  # Mask (see below)
-            z_final = xyz_poca[2]  # Mask (see below)
-        else:
-            track = xyz_poca - xyz_point
-            z_inicial = xyz_poca[2]  # Mask (see below)
-            z_final = xyz_point[2]  # Mask (see below)
-
-        # Extract the volume limits to determine the planes' positions (de divisions of the volume into voxels)
-        x_min, y_min, z_min = voi.xyz_min
-        x_max, y_max, z_max = voi.xyz_max
-
-        # Determine the number of voxels along each axis
-        nx, ny, nz = voi.n_vox_xyz
-
-        # Define the coordinate planes along the three axes
-        self.planes_X = torch.tensor(np.arange(x_min, x_max + nx, voi.vox_width))  # (nx)
-        self.planes_Y = torch.tensor(np.arange(y_min, y_max + ny, voi.vox_width))  # (ny)
-        self.planes_Z = torch.tensor(np.arange(z_min, z_max + nz, voi.vox_width))  # (nz)
-
-        # === Compute intersection points with planes for the entering track === #
-
-        # Compute intersections with X = constant planes
-        t_coord_X_in = (self.planes_X - xyz_point[0]) / track[0]
-        y_coord_X_in = xyz_point[1] + t_coord_X_in * track[1]
-        z_coord_X_in = xyz_point[2] + t_coord_X_in * track[2]
-        intersection_points_X_in = torch.stack((self.planes_X, y_coord_X_in, z_coord_X_in), dim=-1)
-
-        # Compute intersections with Y = constant planes
-        t_coord_Y_in = (self.planes_Y - xyz_point[1]) / track[1]
-        x_coord_Y_in = xyz_point[0] + t_coord_Y_in * track[0]
-        z_coord_Y_in = xyz_point[2] + t_coord_Y_in * track[2]
-        intersection_points_Y_in = torch.stack((x_coord_Y_in, self.planes_Y, z_coord_Y_in), dim=-1)
-
-        # Compute intersections with Z = constant planes
-        t_coord_Z_in = (self.planes_Z - xyz_point[2]) / track[2]
-        x_coord_Z_in = xyz_point[0] + t_coord_Z_in * track[0]
-        y_coord_Z_in = xyz_point[1] + t_coord_Z_in * track[1]
-        intersection_points_Z_in = torch.stack((x_coord_Z_in, y_coord_Z_in, self.planes_Z), dim=-1)
-
-        # Combine all intersection points for each track
-        total_intersection_points = torch.cat((intersection_points_X_in, intersection_points_Y_in, intersection_points_Z_in), dim=0)
-
-        # Compute masks based on enter, exit and POCA position
-        mask = (total_intersection_points[:, 2] <= z_inicial) & (total_intersection_points[:, 2] >= z_final)
-
-        filtered_points = total_intersection_points[mask]
-
-        # Concatenate and order by z coordinate
-        ordered_muon_points = filtered_points[torch.argsort(filtered_points[:, 2], descending=True)]
-        # print(f"Tamaño numero de puntos interseccion: {ordered_muon_points.size()[0]}")
-
-        # Some intersections might be very close to each other (for expample if the intersection point is right at the corner of the voxel)
-        # Define a small tolerance to consider points as duplicates
-        tolerance = 0.01 * voi.vox_width
-
-        # Compute the difference between consecutive points
-        diffs = torch.norm(ordered_muon_points[1:] - ordered_muon_points[:-1], dim=1)
-        # print(f"Diferencias: {diffs}")
-
-        # Keep the first point and those whose difference with the previous one is greater than the tolerance
-        mask = torch.cat((torch.tensor([True], device=diffs.device), diffs > tolerance))
-
-        # Filter out redundant points
-        filtered_muon_points = ordered_muon_points[mask]
-        # print(f"\tTamaño numero de puntos interseccion: {filtered_muon_points.size()[0]}")
-
-        return filtered_muon_points
-
     # def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume) -> Tensor:
     #     if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points doesn't trigger any voxels
     #         triggered_voxels_list = torch.empty((0, 3), dtype=torch.int32)
@@ -644,68 +947,6 @@ class TrackingEM(VoxelPlotting):
     #     # return indices, counts
     #     return triggered_voxels_list
 
-    def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume) -> Tensor:
-        if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points doesn't trigger any voxels
-            triggered_voxels_list = torch.empty((0, 3), dtype=torch.int32)
-        else:
-            # We calculate the point in between the two intersection points
-            points_mid = (muon_intersection_coordinates[:-1] + muon_intersection_coordinates[1:]) / 2
-
-            # Now we transform the coordinates of that middle point into the indices of the triggered voxel
-            x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
-            y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
-            z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).floor().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
-            # Si pongo .round() empeoro la situacion porque caluclo menos voxels aun
-            # x_idx = ((points_mid[:, 0] + abs(voi.xyz_min[0])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[0] - 1).to(torch.int32)
-            # y_idx = ((points_mid[:, 1] + abs(voi.xyz_min[1])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[1] - 1).to(torch.int32)
-            # z_idx = ((points_mid[:, 2] + abs(voi.xyz_min[2])) / voi.vox_width).round().clamp(0, voi.voxel_centers.shape[2] - 1).to(torch.int32)
-
-            indices = torch.stack([x_idx, y_idx, z_idx], dim=1)
-
-            # Flatten cada fila en un número único para encontrar duplicados
-            indices_flat = indices.flatten(start_dim=1)
-            # Lo que estoy haciendo aqui es poner los tres indices del voxel en un numero: x en los millones, y en lo smiles y z en las unidades, de esta manera puedo comparar los numeros mejor
-            keys = indices_flat[:, 0] * 1_000_000 + indices_flat[:, 1] * 1_000 + indices_flat[:, 2]
-
-            # print('Creando claves')
-            # Método manual para conseguir primeras apariciones
-            seen = {}
-            idx_first_list = []  # va a tener los indices de los primeros voxels, no toma las repeticiones
-            for idx, key in enumerate(keys.tolist()):
-                if key not in seen:  # si este voxel no lo hemos visto antes
-                    seen[key] = idx  # entonces lo guardamos en el diccionario
-                    idx_first_list.append(idx)  # Guardamos el índice de la primera aparición
-
-            idx_first = torch.tensor(idx_first_list, dtype=torch.long, device=indices.device)
-
-            # Mapeo de key a su índice único
-            # Asocia a cada key (que es único) un número 0, 1, 2, ..., K-1.
-            # mapped_indices es simplemente a qué grupo pertenece cada voxel original.
-            key_to_idx = {keys[i].item(): idx for idx, i in enumerate(idx_first)}
-            mapped_indices = torch.tensor([key_to_idx[key.item()] for key in keys], device=indices.device)
-            # print('Mapeo finalizado')
-
-            # Crear tensor donde acumularemos
-            # new_counts = torch.zeros(len(idx_first), dtype=torch.int32, device=indices.device)
-            # new_counts.scatter_add_(0, mapped_indices, torch.ones_like(mapped_indices, dtype=torch.int32))
-
-            # Voxels únicos
-            triggered_voxels_list = indices[idx_first]
-
-            # Ahora acumulamos sobre self._M_voxels
-            # Convert indices to a format suitable for scatter_add_
-            flat_indices = indices.T  # Convert to list of indices per dimension
-
-            # Increment volume at given indices
-            self._M_voxels.index_put_(tuple(flat_indices), self._M_voxels[tuple(flat_indices)] + 1)
-
-            # Defino estas cosas par poder utilizarlos tambien en la funcion de calculo de L y T
-            self._idx_first = idx_first
-            self._mapped_indices = mapped_indices
-
-        # return triggered_voxels_list
-        return triggered_voxels_list
-
     # def _compute_L_T_length(self, muon_intersection_coordinates: Tensor, xyz_poca: Tensor) -> Tensor:
     #     # I use idx to print the poca point of the muon, just to see if there is a problem or not
     #     if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points
@@ -730,302 +971,193 @@ class TrackingEM(VoxelPlotting):
     #     # return path_length_LT
     #     return L, T
 
-    def _compute_L_T_length(self, muon_intersection_coordinates: Tensor) -> Tuple[Tensor, Tensor]:
-        if muon_intersection_coordinates.shape[0] < 2:
-            path_length_L = torch.empty((0,), dtype=torch.float32)
-            path_length_T = torch.empty((0,), dtype=torch.float32)
-        else:
-            diffs_L = muon_intersection_coordinates[:-1] - muon_intersection_coordinates[1:]
-            L = torch.norm(diffs_L, dim=1)
+    # def process_all_muons(self) -> None:
+    #     """
+    #     Performs the full processing of muons in a single loop:
+    #     1. Computes intersections with the voxels
+    #     2. Determines the activated voxels
+    #     3. Computes the path lengths L and T
+    #     4. Computes the W matrix
 
-            last_point = muon_intersection_coordinates[-1].unsqueeze(0)
-            diffs_T = muon_intersection_coordinates[:-1] - last_point
-            T = torch.norm(diffs_T, dim=1)
+    #     Stores the results in the corresponding attributes.
+    #     """
+    #     intersection_coordinates_list = []
+    #     # triggered_voxels_BETA_list = []
+    #     triggered_voxels_list = []
+    #     # path_length_LT_list = []
+    #     L_list = []
+    #     T_list = []
 
-            # Acumular L
-            path_length_L = torch.zeros(self._idx_first.shape[0], dtype=L.dtype, device=L.device)
-            # print(f'L = {L}')
-            path_length_L.scatter_add_(0, self._mapped_indices, L)  # sumamos los L's que pertenecen al mismo voxel
-            # print(f'Despues: {path_length_L}')
+    #     Ni, Nj, Nk = self.voi.n_vox_xyz  # Voxel grid dimensions
 
-            # T: solo primer valor
-            path_length_T = T[self._idx_first]
+    #     # it does not work, it seem taht it is in a loop forever
+    #     # print('Computing valid muons')
+    #     # _ = self.valid_muons()
+    #     # print('  --> Done!')
+    #     # print('Begin')
 
-        return path_length_L, path_length_T
+    #     # ----------------------------
+    #     # Identify problematic muons (with POCA at [0,0,0])
+    #     problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
 
-    def _compute_weight_matrix(self, voxels: Tensor, L: Tensor, T: Tensor, idx: int) -> None:
-        """
-        Calcula la matriz de pesos W para el algoritmo de Expectación-Maximización.
-        """
+    #     # Filter out problematic POCA points
+    #     self._valid_poca = self._all_poca[~problematic_muons_mask]  # Keeps only valid POCA points
+    #     self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask]
+    #     self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask]
+    #     self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
+    #     self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
 
-        if len(voxels) > 0 and len(L) > 0:
-            L = L.float()  # Convertir a float32
-            T = T.float()  # Convertir a float32
+    #     self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask]
+    #     self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask]
+    #     # ----------------------------
 
-            # Índices de los voxeles en el grid
-            x_idx, y_idx, z_idx = voxels[:, 0], voxels[:, 1], voxels[:, 2]
+    #     # I am doing this not for this function, but for the next
+    #     # Seems that there is no need to do the mask because they have been already masked??
+    #     # -------------------
+    #     # self._theta_x_in = self.poca.tracks.theta_xy_in[0][~problematic_muons_mask]
+    #     # self._theta_i_in = self.poca.tracks.theta_xy_in[1][~problematic_muons_mask]
 
-            # Calcular los elementos de W
-            self._W[idx, x_idx, y_idx, z_idx, 0, 0] = L
-            self._W[idx, x_idx, y_idx, z_idx, 0, 1] = (L**2) / 2 + L * T
-            self._W[idx, x_idx, y_idx, z_idx, 1, 0] = (L**2) / 2 + L * T
-            self._W[idx, x_idx, y_idx, z_idx, 1, 1] = (L**3) / 3 + (L**2) * T + L * (T**2)
+    #     # self._theta_x_out = self.poca.tracks.theta_xy_out[0][~problematic_muons_mask]
+    #     # self._theta_i_out = self.poca.tracks.theta_xy_out[1][~problematic_muons_mask]
+    #     # -------------------
 
-    def _compute_observed_data(self, idx: int) -> None:
-        """
-        Computes the differences in thetas and path lengths in x and y directions for muons.
+    #     # This will be used for 3D visualization
+    #     # self._last_entry_point = torch.zeros(size=self._valid_xyz_enters_voi.size(), device=self._valid_poca.device)
+    #     # self._first_exit_point = torch.zeros(size=self._valid_xyz_exits_voi.size(), device=self._valid_poca.device)
 
-        Returns:
-            Dx and Dy: tensors of shape (num_muons, 2),
-                    where [:,0] is the delta theta (angle change)
-                    and [:,1] is the corrected observable.
-        """
+    #     n_events = len(self._valid_poca)  # Number of valid muons
 
-        # print("Computing observed data: (Dx and Dy)")
+    #     self._Dx = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
+    #     self._Dy = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
 
-        # Puntos de entrada y salida
-        x0, y0, z0 = self._valid_xyz_enters_voi[idx]
-        x1, y1, z1 = self._valid_xyz_exits_voi[idx]
+    #     # Initialize W (weight matrix) with zeros
+    #     self._W = torch.zeros(n_events, Ni, Nj, Nk, 2, 2, device=self._valid_poca.device)
 
-        # Ángulos en entrada y salida
-        theta_x_in = self._valid_theta_in[idx, 0]  # Ángulo en el plano XZ
-        theta_y_in = self._valid_theta_in[idx, 1]  # Ángulo en el plano YZ
-        theta_x_out = self._valid_theta_out[idx, 0]
-        theta_y_out = self._valid_theta_out[idx, 1]
+    #     # Something that they calculate in tracking_em
+    #     # Hit: a torch tensor of shape (len(self.triggered_voxels), N, N, N1), containing boolean values
+    #     #           indicating which voxels are crossed by the muon path.
+    #     # tiene que tener las mismas dimensiones que L y T
+    #     # Hit = torch.zeros(len(self.triggered_voxels), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
 
-        # theta_x_in = self.tracking.tracks_in[i, 0]  # Ángulo en el plano XZ
-        # theta_y_in = self.tracking.tracks_in[i, 1]  # Ángulo en el plano YZ
-        # theta_x_out = self.tracking.tracks_out[i, 0]
-        # theta_y_out = self.tracking.tracks_out[i, 1]
+    #     # Hit_list = []
+    #     # Hit = torch.zeros(len(n_events), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
+    #     # hit = [0,2,3]
+    #     # otro = [1,0,1]
+    #     # hit[0] = otro[0] != 0
+    #     # hit[1] = otro[1] != 0
+    #     # hit[2] = otro[2] != 0
+    #     # print(hit)
+    #     # [True, False, True]
 
-        # Cálculo de diferencias de ángulo
-        delta_theta_x = theta_x_out - theta_x_in
-        delta_theta_y = theta_y_out - theta_y_in
+    #     # Momento de cada muon, creo una lsita y cada elemento conrresponde con el momento de cada muon
+    #     self._mom = torch.sqrt(2 * 105.7 * self.poca.tracks.E[:]) * 1e-3  # mom in GeV
 
-        # Longitud del trayecto normalizado
-        Lxy = torch.sqrt(1 + torch.tan(theta_x_in) ** 2 + torch.tan(theta_y_in) ** 2)
+    #     muones_revisar = []
 
-        # Coordenadas proyectadas
-        xp = x0 + torch.tan(theta_x_in) * torch.abs(z0 - z1)
-        yp = y0 + torch.tan(theta_y_in) * torch.abs(z0 - z1)
+    #     # print('For loop:')
+    #     # Iterate over all valid muons
+    #     for i in range(len(self._valid_poca)):
+    #         # print(i)
+    #         # Observed data of the i-muon
+    #         self._compute_observed_data(idx=i)
 
-        # Correcciones delta-theta
-        delta_theta_x_comp = (x1 - xp) * Lxy * torch.cos(theta_x_in) * torch.cos(theta_x_out) / torch.cos(delta_theta_x)
-        delta_theta_y_comp = (y1 - yp) * Lxy * torch.cos(theta_y_in) * torch.cos(theta_y_out) / torch.cos(delta_theta_y)
+    #         # Step 1: Compute intersections for the incoming segment
+    #         intersec_coords_in = self._compute_intersection_coordinates(voi=self.voi, xyz_point=self._valid_xyz_enters_voi[i], xyz_poca=self._valid_poca[i])
+    #         # print(self._valid_poca[i].unsqueeze(0).size())
+    #         # print(intersec_coords_in.size())
+    #         intersec_coords_in_poca = torch.cat((intersec_coords_in, self._valid_poca[i].unsqueeze(0)), dim=0)
 
-        # Guardar en los tensores
-        self._Dx[idx, 0] = delta_theta_x
-        self._Dx[idx, 1] = delta_theta_x_comp
-        self._Dy[idx, 0] = delta_theta_y
-        self._Dy[idx, 1] = delta_theta_y_comp
+    #         # self._last_entry_point[i] = intersec_coords_in[-1]
 
-    def valid_muons(self) -> None:
-        # ¡¡¡¡ CUIDADO !!!!
-        # Necesito ejecutar primero xyz_enters/exits_voi para que no sean variables nulas
+    #         # Compute intersections for the outgoing segment
+    #         intersec_coords_out = self._compute_intersection_coordinates(
+    #             voi=self.voi, xyz_point=self._valid_xyz_exits_voi[i], xyz_poca=self._valid_poca[i], incoming=False
+    #         )
 
-        # Identify problematic muons (with POCA at [0,0,0])
-        problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
+    #         # intersec_coords_out_poca = torch.cat((self._valid_poca[i].unsqueeze(0), intersec_coords_out), dim=0)
+    #         # self._first_exit_point[i] = intersec_coords_out[0]
 
-        # Filter out problematic POCA points
-        self._valid_poca = self._all_poca[~problematic_muons_mask]  # Keeps only valid POCA points
-        self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask]
-        self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask]
-        self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
+    #         # Check if both the last incoming and first outgoing points lie on lateral (X or Y) planes
+    #         # last_point = intersec_coords_in[-1]
+    #         # first_point = intersec_coords_out[0]
 
-        self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask]
+    #         # if (last_point[0] in self.planes_X or last_point[1] in self.planes_Y) and (first_point[0] in self.planes_X or first_point[1] in self.planes_Y):
+    #         #     # If both are on lateral faces, remove the last point from the incoming set
+    #         #     intersec_coords_in = intersec_coords_in[:-1]
+    #         #     # And remove the first point from the outgoing set
+    #         #     intersec_coords_out = intersec_coords_out[1:]
 
-        # self.poca.tracks.E # es la energía cinética del muon, no hace falta hacerle el masking
+    #         # Concatenate both segments
+    #         intersection_coordinates_poca = torch.cat((intersec_coords_in_poca, intersec_coords_out), dim=0)
+    #         intersection_coordinates_list.append(intersection_coordinates_poca)
 
-        return
+    #         # Step 2: Compute which voxels were triggered (intersected)
+    #         # triggered_voxels, counts = self._compute_triggered_voxels(intersection_coordinates_poca, self.voi)
+    #         triggered_voxels = self._compute_triggered_voxels(intersection_coordinates_poca, self.voi)  # No repeated voxels
+    #         # triggered_voxels_BETA_list.append(triggered_voxels)
+    #         triggered_voxels_list.append(triggered_voxels)
 
-    def process_all_muons(self) -> None:
-        """
-        Performs the full processing of muons in a single loop:
-        1. Computes intersections with the voxels
-        2. Determines the activated voxels
-        3. Computes the path lengths L and T
-        4. Computes the W matrix
+    #         # Hit_list.append(Hit)
 
-        Stores the results in the corresponding attributes.
-        """
-        intersection_coordinates_list = []
-        # triggered_voxels_BETA_list = []
-        triggered_voxels_list = []
-        # path_length_LT_list = []
-        L_list = []
-        T_list = []
+    #         # Step 3: Compute the path lengths L and T through the voxels
+    #         # L_T_values = self._compute_L_T_length(intersection_coordinates_poca, i)
+    #         # path_length_LT_list.append(L_T_values)
+    #         # L_list.append(L_T_values[:,0])
+    #         # T_list.append(L_T_values[:,1])
 
-        Ni, Nj, Nk = self.voi.n_vox_xyz  # Voxel grid dimensions
+    #         # # Incoming
+    #         # L_T_values_in = self._compute_L_T_length(intersec_coords_in_poca, i)
+    #         # print(L_T_values_in.size())
 
-        # it does not work, it seem taht it is in a loop forever
-        # print('Computing valid muons')
-        # _ = self.valid_muons()
-        # print('  --> Done!')
-        # print('Begin')
+    #         # # Outgoing
+    #         # L_T_values_out = self._compute_L_T_length(intersec_coords_out_poca, i)
+    #         # print(L_T_values_out.size())
 
-        # ----------------------------
-        # Identify problematic muons (with POCA at [0,0,0])
-        problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
+    #         # # Necesito sumar el uklimo valor de in al primer valor de out (voxels con el poca dentro) y ademas tengo que qitar estos dos valores de las variables e incluir el nuevo
+    #         # L_T_POCA_voxel = L_T_values_in[-1]+L_T_values_out[0]
+    #         # L_T_values = torch.cat((L_T_values_in[:-1], L_T_POCA_voxel, L_T_values_out[1:]), dim=0)
+    #         # print(L_T_values.size())
+    #         # print(triggered_voxels.size())
 
-        # Filter out problematic POCA points
-        self._valid_poca = self._all_poca[~problematic_muons_mask]  # Keeps only valid POCA points
-        self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask]
-        self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask]
-        self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
+    #         # # Sanity check: number of path length entries should match number of triggered voxels
+    #         # if L_T_values.size()[0] == triggered_voxels.size()[0]:
+    #         #     continue
+    #         # else:
+    #         #     print(f"Revisar: muon {i}")  # Debug message if there's a mismatch
 
-        self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask]
-        # ----------------------------
+    #         # # Incoming
+    #         # L_in, T_in = self._compute_L_T_length(intersec_coords_in_poca, i)
+    #         # # Outgoing
+    #         # L_out, T_out = self._compute_L_T_length(intersec_coords_out_poca, i)
 
-        # I am doing this not for this function, but for the next
-        # Seems that there is no need to do the mask because they have been already masked??
-        # -------------------
-        # self._theta_x_in = self.poca.tracks.theta_xy_in[0][~problematic_muons_mask]
-        # self._theta_i_in = self.poca.tracks.theta_xy_in[1][~problematic_muons_mask]
+    #         # # Necesito sumar el uklimo valor de in al primer valor de out (voxels con el poca dentro) y ademas tengo que qitar estos dos valores de las variables e incluir el nuevo
+    #         # L_POCA_voxel = L_in[-1]+L_out[0]
+    #         # L_values = torch.cat((L_in[:-1], L_POCA_voxel.view(1), L_out[1:]))
 
-        # self._theta_x_out = self.poca.tracks.theta_xy_out[0][~problematic_muons_mask]
-        # self._theta_i_out = self.poca.tracks.theta_xy_out[1][~problematic_muons_mask]
-        # -------------------
+    #         L_values, T_values = self._compute_L_T_length(muon_intersection_coordinates=intersection_coordinates_poca)
+    #         L_list.append(L_values)
+    #         T_list.append(T_values)
 
-        # This will be used for 3D visualization
-        # self._last_entry_point = torch.zeros(size=self._valid_xyz_enters_voi.size(), device=self._valid_poca.device)
-        # self._first_exit_point = torch.zeros(size=self._valid_xyz_exits_voi.size(), device=self._valid_poca.device)
+    #         # Sanity check: number of path length entries should match number of triggered voxels
+    #         if (L_values.size()[0] == triggered_voxels.size()[0]) and (T_values.size()[0] == triggered_voxels.size()[0]):
+    #             continue
+    #         else:
+    #             # print(f"Revisar: muon {i}")  # Debug message if there's a mismatch
+    #             # print(counts)
+    #             muones_revisar.append(i)
 
-        n_events = len(self._valid_poca)  # Number of valid muons
+    #         # Step 4: Compute the weight matrix W for this muon
+    #         self._compute_weight_matrix(triggered_voxels, L_values, T_values, i)
 
-        self._Dx = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
-        self._Dy = torch.zeros((n_events, 2), dtype=torch.float32, device=self._valid_poca.device)
+    #     # print(muones_revisar)
 
-        # Initialize W (weight matrix) with zeros
-        self._W = torch.zeros(n_events, Ni, Nj, Nk, 2, 2, device=self._valid_poca.device)
-
-        # Something that they calculate in tracking_em
-        # Hit: a torch tensor of shape (len(self.triggered_voxels), N, N, N1), containing boolean values
-        #           indicating which voxels are crossed by the muon path.
-        # tiene que tener las mismas dimensiones que L y T
-        # Hit = torch.zeros(len(self.triggered_voxels), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
-        # Hit_list = []
-        # Hit = torch.zeros(len(n_events), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
-        # hit = [0,2,3]
-        # otro = [1,0,1]
-        # hit[0] = otro[0] != 0
-        # hit[1] = otro[1] != 0
-        # hit[2] = otro[2] != 0
-        # print(hit)
-        # [True, False, True]
-
-        # Momento de cada muon, creo una lsita y cada elemento conrresponde con el momento de cada muon
-        self._mom = torch.sqrt(2 * 105.7 * self.poca.tracks.E[:]) * 1e-3  # mom in GeV
-
-        muones_revisar = []
-
-        # print('For loop:')
-        # Iterate over all valid muons
-        for i in range(len(self._valid_poca)):
-            # print(i)
-            # Observed data of the i-muon
-            self._compute_observed_data(idx=i)
-
-            # Step 1: Compute intersections for the incoming segment
-            intersec_coords_in = self._compute_intersection_coordinates(voi=self.voi, xyz_point=self._valid_xyz_enters_voi[i], xyz_poca=self._valid_poca[i])
-            # print(self._valid_poca[i].unsqueeze(0).size())
-            # print(intersec_coords_in.size())
-            intersec_coords_in_poca = torch.cat((intersec_coords_in, self._valid_poca[i].unsqueeze(0)), dim=0)
-
-            # self._last_entry_point[i] = intersec_coords_in[-1]
-
-            # Compute intersections for the outgoing segment
-            intersec_coords_out = self._compute_intersection_coordinates(
-                voi=self.voi, xyz_point=self._valid_xyz_exits_voi[i], xyz_poca=self._valid_poca[i], incoming=False
-            )
-
-            # intersec_coords_out_poca = torch.cat((self._valid_poca[i].unsqueeze(0), intersec_coords_out), dim=0)
-            # self._first_exit_point[i] = intersec_coords_out[0]
-
-            # Check if both the last incoming and first outgoing points lie on lateral (X or Y) planes
-            # last_point = intersec_coords_in[-1]
-            # first_point = intersec_coords_out[0]
-
-            # if (last_point[0] in self.planes_X or last_point[1] in self.planes_Y) and (first_point[0] in self.planes_X or first_point[1] in self.planes_Y):
-            #     # If both are on lateral faces, remove the last point from the incoming set
-            #     intersec_coords_in = intersec_coords_in[:-1]
-            #     # And remove the first point from the outgoing set
-            #     intersec_coords_out = intersec_coords_out[1:]
-
-            # Concatenate both segments
-            intersection_coordinates_poca = torch.cat((intersec_coords_in_poca, intersec_coords_out), dim=0)
-            intersection_coordinates_list.append(intersection_coordinates_poca)
-
-            # Step 2: Compute which voxels were triggered (intersected)
-            # triggered_voxels, counts = self._compute_triggered_voxels(intersection_coordinates_poca, self.voi)
-            triggered_voxels = self._compute_triggered_voxels(intersection_coordinates_poca, self.voi)  # No repeated voxels
-            # triggered_voxels_BETA_list.append(triggered_voxels)
-            triggered_voxels_list.append(triggered_voxels)
-
-            # Hit_list.append(Hit)
-
-            # Step 3: Compute the path lengths L and T through the voxels
-            # L_T_values = self._compute_L_T_length(intersection_coordinates_poca, i)
-            # path_length_LT_list.append(L_T_values)
-            # L_list.append(L_T_values[:,0])
-            # T_list.append(L_T_values[:,1])
-
-            # # Incoming
-            # L_T_values_in = self._compute_L_T_length(intersec_coords_in_poca, i)
-            # print(L_T_values_in.size())
-
-            # # Outgoing
-            # L_T_values_out = self._compute_L_T_length(intersec_coords_out_poca, i)
-            # print(L_T_values_out.size())
-
-            # # Necesito sumar el uklimo valor de in al primer valor de out (voxels con el poca dentro) y ademas tengo que qitar estos dos valores de las variables e incluir el nuevo
-            # L_T_POCA_voxel = L_T_values_in[-1]+L_T_values_out[0]
-            # L_T_values = torch.cat((L_T_values_in[:-1], L_T_POCA_voxel, L_T_values_out[1:]), dim=0)
-            # print(L_T_values.size())
-            # print(triggered_voxels.size())
-
-            # # Sanity check: number of path length entries should match number of triggered voxels
-            # if L_T_values.size()[0] == triggered_voxels.size()[0]:
-            #     continue
-            # else:
-            #     print(f"Revisar: muon {i}")  # Debug message if there's a mismatch
-
-            # # Incoming
-            # L_in, T_in = self._compute_L_T_length(intersec_coords_in_poca, i)
-            # # Outgoing
-            # L_out, T_out = self._compute_L_T_length(intersec_coords_out_poca, i)
-
-            # # Necesito sumar el uklimo valor de in al primer valor de out (voxels con el poca dentro) y ademas tengo que qitar estos dos valores de las variables e incluir el nuevo
-            # L_POCA_voxel = L_in[-1]+L_out[0]
-            # L_values = torch.cat((L_in[:-1], L_POCA_voxel.view(1), L_out[1:]))
-
-            L_values, T_values = self._compute_L_T_length(muon_intersection_coordinates=intersection_coordinates_poca)
-            L_list.append(L_values)
-            T_list.append(T_values)
-
-            # Sanity check: number of path length entries should match number of triggered voxels
-            if (L_values.size()[0] == triggered_voxels.size()[0]) and (T_values.size()[0] == triggered_voxels.size()[0]):
-                continue
-            else:
-                # print(f"Revisar: muon {i}")  # Debug message if there's a mismatch
-                # print(counts)
-                muones_revisar.append(i)
-
-            # Step 4: Compute the weight matrix W for this muon
-            self._compute_weight_matrix(triggered_voxels, L_values, T_values, i)
-
-        # print(muones_revisar)
-
-        # Store the computed results in instance attributes
-        self._intersection_coordinates = intersection_coordinates_list
-        # self._triggered_voxels_BETA = triggered_voxels_BETA_list
-        self._triggered_voxels = triggered_voxels_list
-        # self._path_length_LT = path_length_LT_list
-        self._L = L_list
-        self._T = T_list
+    #     # Store the computed results in instance attributes
+    #     self._intersection_coordinates = intersection_coordinates_list
+    #     # self._triggered_voxels_BETA = triggered_voxels_BETA_list
+    #     self._triggered_voxels = triggered_voxels_list
+    #     # self._path_length_LT = path_length_LT_list
+    #     self._L = L_list
+    #     self._T = T_list
 
     """
         Function calculates the path lengths between intersections along the path taken by muon through a medium.
@@ -1050,9 +1182,9 @@ class TrackingEM(VoxelPlotting):
 
     """
 
-    # ---------------------------- #
-    #                              #
-    # ---------------------------- #
+    # -------------------------------------------------------------------------------------------------------------------------------------------- #
+    #                                                                                                                                              #
+    # -------------------------------------------------------------------------------------------------------------------------------------------- #
 
     def draw_cube(self, ax: Axes3D, center: Tensor, side: float, color: str = "blue", alpha: float = 0.1) -> None:
         """Dibuja un cubo 3D centrado en `center` con longitud de lado `side`"""
@@ -1506,6 +1638,149 @@ class TrackingEM(VoxelPlotting):
             )
         return self._path_length_in_out
 
+    @property
+    def xyz_enters_voi(self) -> Tensor:
+        """Coordinates of the muon incoming track when entering the voi"""
+        if self._xyz_enters_voi is None:
+            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.tracking.theta_xy_in, pm=-1)
+        return self._xyz_enters_voi
+
+    @property
+    def xyz_exits_voi(self) -> Tensor:
+        """Coordinates of the muon outgoing track when exiting the voi"""
+        if self._xyz_exits_voi is None:
+            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.tracking.theta_xy_out, pm=1)
+        return self._xyz_exits_voi
+
+    @property
+    def all_poca(self) -> Tensor:
+        """The poca points associated to ALL the tracks in self.tracking"""
+        if self._all_poca is None:
+            self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
+        return self._all_poca
+
+    @property
+    def intersection_coordinates(self) -> List[Tensor]:
+        """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
+        if self._intersection_coordinates is None:
+            self._intersection_coordinates = self.get_intersection_coordinates()
+        return self._intersection_coordinates
+
+    @property
+    def triggered_voxels(self) -> List[Tensor]:
+        """The triggered voxels of all muons"""
+        if self._triggered_voxels is None:
+            self._triggered_voxels = self.get_triggered_voxels()
+        return self._triggered_voxels
+
+    @property
+    def L(self) -> List[Tensor]:
+        """The L path length of all muons"""
+        if self._L is None:
+            self._L, _ = self.get_L_T_pathlength()
+        return self._L
+
+    @property
+    def T(self) -> List[Tensor]:
+        """The T path length of all muons"""
+        if self._T is None:
+            _, self._T = self.get_L_T_pathlength()
+        return self._T
+
+    def set_M_voxels(self) -> Tensor:
+        if self._M_voxels is None:
+            self._M_voxels = torch.zeros(self.voi.n_vox_xyz)
+        return self._M_voxels
+
+    @property
+    def W(self) -> Tensor:
+        """Weight matrix"""
+        if self._W is None:
+            self.get_weight_matrix()
+        return self._W
+
+    @property
+    def Dx(self) -> Tensor:
+        """Dx"""
+        if self._Dx is None:
+            self._Dx, _ = self.get_observed_data()
+        return self._Dx
+
+    @property
+    def Dy(self) -> Tensor:
+        """Dy"""
+        if self._Dy is None:
+            _, self._Dy = self.get_observed_data()
+        return self._Dy
+
+    # @property
+    # def valid_poca(self) -> Tensor:
+    #     """The POCA points inside the volume"""
+    #     self.valid_muons()
+    #     return self._valid_poca
+
+    # @property
+    # def valid_E(self) -> Tensor:
+    #     """The POCA points inside the volume"""
+    #     self.valid_muons()
+    #     return self._valid_E
+
+    # @property
+    # def W(self) -> Tensor:
+    #     """Weight matrix"""
+    #     if self._W is None:
+    #         self.process_all_muons()
+    #     return self._W
+
+    # @property
+    # def T(self) -> List[Tensor]:
+    #     """The T path length of all muons"""
+    #     if self._T is None:
+    #         self.process_all_muons()
+    #     return self._T
+
+    # @property
+    # def path_length_LT(self) -> List[Tensor]:
+    #     """The L and T path length of all muons"""
+    #     if self._path_length_LT is None:
+    #         self.process_all_muons()
+    # return self._path_length_LT
+
+    # @property
+    # def L(self) -> List[Tensor]:
+    #     """The L path length of all muons"""
+    #     if self._L is None:
+    #         self.process_all_muons()
+    #     return self._L
+
+    # @property
+    # def triggered_voxels(self) -> List[Tensor]:
+    #     """The triggered voxels of all muons"""
+    #     if self._triggered_voxels is None:
+    #         self.process_all_muons()
+    #     return self._triggered_voxels
+
+    # @property
+    # def intersection_coordinates_old(self) -> List[Tensor]:
+    #     """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
+    #     if self._intersection_coordinates is None:
+    #         self._intersection_coordinates = self.compute_intersection_coordinates_all_muons(
+    #             voi=self.voi,
+    #             xyz_enters_voi=self._xyz_enters_voi,
+    #             xyz_exits_voi=self._xyz_exits_voi,
+    #             tracks_in=self.tracking.tracks_in,
+    #             tracks_out=self.tracking.tracks_out,
+    #             all_poca=self._all_poca,
+    #         )
+    #     return self._intersection_coordinates
+
+    # @property
+    # def intersection_coordinates(self) -> List[Tensor]:
+    #     """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
+    #     if self._intersection_coordinates is None:
+    #         self.process_all_muons()
+    #     return self._intersection_coordinates
+
     # @property
     # def triggered_voxels(self) -> List[np.ndarray]:
     #     """Voxels triggered by the muon track"""
@@ -1534,111 +1809,3 @@ class TrackingEM(VoxelPlotting):
     #             )
     #         self._triggered_voxels_BETA = TrackingEM.get_triggered_voxels_BETA(self, voi=self.voi, intersection_coordinates=self._intersection_coordinates)
     #     return self._triggered_voxels_BETA
-
-    @property
-    def xyz_enters_voi(self) -> Tensor:
-        """Coordinates of the muon incoming track when entering the voi"""
-        if self._xyz_enters_voi is None:
-            self._xyz_enters_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[0][:, 1], voi=self.voi, theta_xy=self.tracking.theta_xy_in, pm=-1)
-        return self._xyz_enters_voi
-
-    @property
-    def xyz_exits_voi(self) -> Tensor:
-        """Coordinates of the muon outgoing track when exiting the voi"""
-        if self._xyz_exits_voi is None:
-            self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.tracking.theta_xy_out, pm=1)
-        return self._xyz_exits_voi
-
-    @property
-    def all_poca(self) -> Tensor:
-        """The poca points associated to ALL the tracks in self.tracking"""
-        if self._all_poca is None:
-            self._all_poca = self.get_all_poca(poca=self.poca, tracking=self.tracking)
-        return self._all_poca
-
-    # @property
-    # def intersection_coordinates_old(self) -> List[Tensor]:
-    #     """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
-    #     if self._intersection_coordinates is None:
-    #         self._intersection_coordinates = self.compute_intersection_coordinates_all_muons(
-    #             voi=self.voi,
-    #             xyz_enters_voi=self._xyz_enters_voi,
-    #             xyz_exits_voi=self._xyz_exits_voi,
-    #             tracks_in=self.tracking.tracks_in,
-    #             tracks_out=self.tracking.tracks_out,
-    #             all_poca=self._all_poca,
-    #         )
-    #     return self._intersection_coordinates
-
-    @property
-    def intersection_coordinates(self) -> List[Tensor]:
-        """The intersection points of the track (incoming and outgoing) with the triggered voxels of all muons"""
-        if self._intersection_coordinates is None:
-            self.process_all_muons()
-        return self._intersection_coordinates
-
-    @property
-    def triggered_voxels(self) -> List[Tensor]:
-        """The triggered voxels of all muons"""
-        if self._triggered_voxels is None:
-            self.process_all_muons()
-        return self._triggered_voxels
-
-    # @property
-    # def path_length_LT(self) -> List[Tensor]:
-    #     """The L and T path length of all muons"""
-    #     if self._path_length_LT is None:
-    #         self.process_all_muons()
-    # return self._path_length_LT
-
-    @property
-    def L(self) -> List[Tensor]:
-        """The L path length of all muons"""
-        if self._L is None:
-            self.process_all_muons()
-        return self._L
-
-    @property
-    def T(self) -> List[Tensor]:
-        """The T path length of all muons"""
-        if self._T is None:
-            self.process_all_muons()
-        return self._T
-
-    def set_M_voxels(self) -> Tensor:
-        if self._M_voxels is None:
-            self._M_voxels = torch.zeros(self.voi.n_vox_xyz)
-        return self._M_voxels
-
-    # @property
-    # def valid_poca(self) -> Tensor:
-    #     """The POCA points inside the volume"""
-    #     self.valid_muons()
-    #     return self._valid_poca
-
-    # @property
-    # def valid_E(self) -> Tensor:
-    #     """The POCA points inside the volume"""
-    #     self.valid_muons()
-    #     return self._valid_E
-
-    @property
-    def W(self) -> Tensor:
-        """Weight matrix"""
-        if self._W is None:
-            self.process_all_muons()
-        return self._W
-
-    @property
-    def Dx(self) -> Tensor:
-        """Dx"""
-        if self._Dx is None:
-            self.process_all_muons()
-        return self._Dx
-
-    @property
-    def Dy(self) -> Tensor:
-        """Dy"""
-        if self._Dy is None:
-            self.process_all_muons()
-        return self._Dy

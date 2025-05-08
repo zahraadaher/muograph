@@ -5,14 +5,16 @@ from torch.utils.data import DataLoader, TensorDataset
 from fastprogress import progress_bar
 from muograph.plotting.voxel import VoxelPlotting
 from muograph.volume.volume import Volume
-from muograph.tracking.tracking_em import Tracking_EM
+
+# from muograph.tracking.tracking_em import Tracking_EM
+from muograph.reconstruction.tracking_em_test import TrackingEM  # Aqui es donde yo he ido trabajando y donde tengo M y W
 
 
 class EM(VoxelPlotting):
     def __init__(
         self,
         voi: Volume,
-        tracks: Tracking_EM,
+        tracks: TrackingEM,
         # data: pandas.DataFrame,
         em_iter: int = 1,
         init_lrad: float = 0.5,
@@ -21,22 +23,35 @@ class EM(VoxelPlotting):
         self.voi = voi
         self.voxel_edges = voi.voxel_edges
         self.Nvox_Z = voi.n_vox_xyz[2]
-        self.data = tracks.data
+        # self.data = tracks.data # solo necesito calcualr el momento, no hace falta que defina el dataframe data
+        self.mom = tracks.momentum
         self.em_iter = em_iter
         self.init_lrad = init_lrad
+        # self.intersection_coordinates = tracks.intersection_coordinates
+        # self.triggered_voxels = tracks.triggered_voxels
+        self.Hit = tracks.Hit
+        # self.W, self.M, self.Path_Length, self.T2, self.Hit = (
+        #     tracks.W,
+        #     tracks.M,
+        #     tracks.Path_Length,
+        #     tracks.T2,
+        #     tracks.Hit,
+        # )
+        # self.indices = tracks.indices # me servian para ahcer un masking, pero realmente no me hace falta
         self.intersection_coordinates = tracks.intersection_coordinates
         self.triggered_voxels = tracks.triggered_voxels
-        self.W, self.M, self.Path_Length, self.T2, self.Hit = (
+        self.W, self.M, self.Path_Length, self.T2 = (
             tracks.W,
-            tracks.M,
-            tracks.Path_Length,
-            tracks.T2,
-            tracks.Hit,
+            tracks.M_voxels,
+            tracks.L,
+            tracks.T,
         )
-        self.indices = tracks.indices
         self.Dx, self.Dy = tracks.Dx, tracks.Dy
+
         self.pr, self._lambda_ = self.compute_init_scatter_density()
-        self.rad_length, self.scattering_density = self.em_reconstruction()
+        print("Momento pr: ", self.pr.size())
+        print("Lambda: ", self._lambda_.size())
+        # self.rad_length, self.scattering_density = self.em_reconstruction()
 
     def compute_init_scatter_density(self) -> Tuple[Tensor, Tensor]:
         """
@@ -56,7 +71,8 @@ class EM(VoxelPlotting):
         )
         p0 = 5  # GeV
         _lambda_ = ((15e-3 / p0) ** 2) * (1 / L_rad)
-        pr = p0 / (self.data["mom"][self.indices])  # mom has to be in GeV
+        # pr = p0 / (self.data["mom"][self.indices])  # mom has to be in GeV
+        pr = p0 / (self.mom)  # mom has to be in GeV
 
         return pr, _lambda_
 
@@ -90,7 +106,8 @@ class EM(VoxelPlotting):
                 batch_indices = batch[0].tolist()  # Extract batch indices  # <-- NEW LINE
 
                 for i in batch_indices:  # <-- UPDATED TO USE BATCHED DATA
-                    pr_i = self.pr[self.indices[i]]
+                    # pr_i = self.pr[self.indices[i]]
+                    pr_i = self.pr[i]
                     tDx_i = torch.transpose(self.Dx[i], 0, -1)  # DiT
                     tDy_i = torch.transpose(self.Dy[i], 0, -1)
 
