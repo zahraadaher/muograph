@@ -40,6 +40,8 @@ class TrackingEM(VoxelPlotting):
 
     _M_voxels: Optional[Tensor] = None  # is the number of muons hitting each voxel (Nx, Ny, Nz)
 
+    _Hit: Optional[Tensor] = None
+
     _W: Optional[Tensor] = None  # weight matrix
 
     def __init__(self, voi: Volume, tracking: TrackingMST, n_events: int = 1000, batch_size: int = 100, muon_path: str = "poca") -> None:
@@ -58,10 +60,12 @@ class TrackingEM(VoxelPlotting):
         self.muon_path = muon_path
 
         self.M_voxels = self.set_M_voxels()
+        # self.Hit = self.set_Hit()
 
         self.verify = False
 
-        self.momentum = self.poca.tracks.E
+        # self.momentum = self.poca.tracks.E
+        self.momentum = torch.sqrt(2 * 105.7 * self.poca.tracks.E[:]) * 1e-3  # mom in GeV
 
         # self.valid_muons()
 
@@ -172,6 +176,9 @@ class TrackingEM(VoxelPlotting):
         Returns:
             List[Tensor]: is a list of N_muons elements and each element is a tensor with the correspondenting interseccion point coordenates xyz, includin the poca
         """
+
+        print("Getting the intersection points")
+
         if not self.verify:  # si es la primera vez que hacemos valid_muons
             self.valid_muons()
         intersection_coordinates_list = []
@@ -189,6 +196,9 @@ class TrackingEM(VoxelPlotting):
             # Concatenate both segments
             intersection_coordinates_poca = torch.cat((intersec_coords_in_poca, intersec_coords_out), dim=0)
             intersection_coordinates_list.append(intersection_coordinates_poca)
+
+        print("\t Done!")
+
         return intersection_coordinates_list
 
     def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume, idx: int) -> Tensor:
@@ -267,6 +277,9 @@ class TrackingEM(VoxelPlotting):
         """
         Computes the triggered voxels for each muon.
         """
+
+        print("Getting the triggered voxels")
+
         if not self.verify:  # si es la primera vez que hacemos valid_muons
             self.valid_muons()
 
@@ -285,6 +298,8 @@ class TrackingEM(VoxelPlotting):
             triggered_voxels_list.append(triggered_voxels)
             self._idx_first_list.append(self._idx_first)
             self._mapped_indices_list.append(self._mapped_indices)
+
+        print("\t Done!")
 
         return triggered_voxels_list
 
@@ -313,6 +328,8 @@ class TrackingEM(VoxelPlotting):
         return path_length_L, path_length_T
 
     def get_L_T_pathlength(self) -> Tuple[List[Tensor], List[Tensor]]:
+        print("Getting the L and T path lenght")
+
         if not self.verify:  # si es la primera vez que hacemos valid_muons
             self.valid_muons()
 
@@ -331,6 +348,8 @@ class TrackingEM(VoxelPlotting):
             )
             L.append(_L)
             T.append(_T)
+
+        print("\t Done!")
 
         return L, T
 
@@ -1691,6 +1710,11 @@ class TrackingEM(VoxelPlotting):
         if self._M_voxels is None:
             self._M_voxels = torch.zeros(self.voi.n_vox_xyz)
         return self._M_voxels
+
+    # def set_Hit(self) -> Tensor:
+    #     if self._Hit is None:
+    #         self._Hit = torch.zeros(self.voi.n_vox_xyz) # realmente las dimensiones estan mal (ver funcion get_triggered_voxels)
+    #     return self._Hit
 
     @property
     def W(self) -> Tensor:

@@ -6,6 +6,9 @@ from fastprogress import progress_bar
 from muograph.plotting.voxel import VoxelPlotting
 from muograph.volume.volume import Volume
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 # from muograph.tracking.tracking_em import Tracking_EM
 from muograph.reconstruction.tracking_em_test import TrackingEM  # Aqui es donde yo he ido trabajando y donde tengo M y W
 
@@ -29,7 +32,7 @@ class EM(VoxelPlotting):
         self.init_lrad = init_lrad
         # self.intersection_coordinates = tracks.intersection_coordinates
         # self.triggered_voxels = tracks.triggered_voxels
-        self.Hit = tracks.Hit
+        # self.Hit = tracks.Hit
         # self.W, self.M, self.Path_Length, self.T2, self.Hit = (
         #     tracks.W,
         #     tracks.M,
@@ -46,12 +49,13 @@ class EM(VoxelPlotting):
             tracks.L,
             tracks.T,
         )
+        self.Hit = tracks.Hit
         self.Dx, self.Dy = tracks.Dx, tracks.Dy
 
         self.pr, self._lambda_ = self.compute_init_scatter_density()
         print("Momento pr: ", self.pr.size())
         print("Lambda: ", self._lambda_.size())
-        # self.rad_length, self.scattering_density = self.em_reconstruction()
+        self.rad_length, self.scattering_density = self.em_reconstruction()
 
     def compute_init_scatter_density(self) -> Tuple[Tensor, Tensor]:
         """
@@ -90,9 +94,15 @@ class EM(VoxelPlotting):
 
         # Create a DataLoader for batching the events
         dataset = TensorDataset(torch.arange(n_events))  # <-- NEW LINE
+        # Es como un objeto (parecido a una lista de elementos) donde cada elemento es una tupla (tensor,) donde el tensor es de un único valor (del 0 al n_events-1: tensor(0),tensor(1),tensor(2)...)
+        print(dataset[0][0], dataset[1])
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)  # <-- NEW LINE
+        # DataLoader(...) crea un iterador que permite recorrer el dataset en batches del tamaño especificado por batch_size.
+        # shuffle=False significa que los datos se entregarán en orden secuencial (0, 1, 2, ...), sin mezclar.
 
-        for itr in progress_bar(range(0, self.em_iter - 1)):
+        for itr in progress_bar(
+            range(0, self.em_iter - 1)
+        ):  # es simplemente para mostrar la barra de progreso en el notebook cuando se ejecuta, de esta manera vemos cuanto le queda
             sigma_D = torch.zeros(n_events, 2, 2)
             w_h = torch.zeros(n_events, Ni, Nj, Nk, 2, 2)
             w_h_sum = torch.zeros(n_events, 2, 2)
@@ -104,8 +114,13 @@ class EM(VoxelPlotting):
 
             for batch in dataloader:  # <-- NEW LINE
                 batch_indices = batch[0].tolist()  # Extract batch indices  # <-- NEW LINE
+                # print('Batch: ', batch)
 
                 for i in batch_indices:  # <-- UPDATED TO USE BATCHED DATA
+                    # print('\t i: ',i)
+                    # el ultimo valor que tomara sera 9477
+                    # por loque entiendo, es como si estuvieramos tomando cada muon (i-muon)
+
                     # pr_i = self.pr[self.indices[i]]
                     pr_i = self.pr[i]
                     tDx_i = torch.transpose(self.Dx[i], 0, -1)  # DiT
@@ -118,6 +133,7 @@ class EM(VoxelPlotting):
                     det_sigma_D = torch.det(sigma_D[i, :, :])
 
                     if det_sigma_D != 0:
+                        # print('det_sigma_D != 0')
                         sigma_D_inv = torch.linalg.inv(sigma_D[i, :, :])
                         xx, yy, zz = torch.meshgrid(torch.arange(Ni), torch.arange(Nj), torch.arange(Nk))
                         mask = self.Hit[i].bool()
@@ -151,10 +167,72 @@ class EM(VoxelPlotting):
 
                         Sy[i, mask] = 2 * lambda_j + (mtr_y_4 - mtr_5) * (pr_i**2) * (lambda_j**2)
 
+                        # Si descomento estas lineas el codigo se peta y no se ejecuta
+                        # if torch.isnan(Sx).any() or torch.isnan(Sy).any():
+                        #     print(f"NaN en Sx o Sy en evento {i}")
+
                         S[i, mask] = (Sx[i, mask] + Sy[i, mask]) / 2
 
-            scatter_density[itr + 1, :, :, :] = torch.sum(S, dim=0) / (2 * self.M)
+            # scatter_density[itr + 1, :, :, :] = torch.sum(S, dim=0) / (2 * self.M)
+
+            # denom = 2 * self.M
+            # denom[denom == 0] = 1e-12  # para evitar división por cero
+            # scatter_density[itr + 1, :, :, :] = torch.sum(S, dim=0) / denom
+
+            mask = self.M != 0
+            scatter_density[itr + 1][mask] = (torch.sum(S, dim=0) / (2 * self.M))[mask]
 
         rad_len = (15e-3 / p_0) ** 2 / scatter_density
 
         return rad_len, scatter_density
+
+    def plot_scattering_density_slices(self, scatter_density: torch.Tensor) -> None:
+        """
+        Plots 8 slices along the z-axis from the 3D scattering density tensor.
+
+        Parameters:
+        - scatter_density: Tensor of shape (Ni, Nj, Nk)
+        - voxel_size_mm: Size of each voxel in mm (for labeling)
+        - z_start: Coordinate of the first slice center (in mm)
+        """
+        voxel_size_mm = self.voi.vox_width
+        z_start = self.voi.xyz_min[2]
+
+        scatter_density_np = scatter_density.cpu().numpy()  # Convert to NumPy
+        Nk = scatter_density_np.shape[2]
+
+        # Choose 8 evenly spaced z slices (can be adjusted)
+        z_indices = np.linspace(0, Nk - 1, 8, dtype=int)
+
+        # fig, axs = plt.subplots(2, 2, figsize=(16, 8))
+        fig, axs = plt.subplots(2, 4, figsize=(16, 8), constrained_layout=True)
+
+        vmin = np.min(scatter_density_np)
+        vmax = np.max(scatter_density_np)
+
+        for ax, k in zip(axs.flat, z_indices):
+            img = ax.imshow(
+                scatter_density_np[:, :, k].T,
+                origin="lower",
+                cmap="jet",
+                vmin=vmin,
+                vmax=vmax,
+                # extent=[
+                #     -scatter_density_np.shape[0] // 2 * voxel_size_mm,
+                #     scatter_density_np.shape[0] // 2 * voxel_size_mm,
+                #     -scatter_density_np.shape[1] // 2 * voxel_size_mm,
+                #     scatter_density_np.shape[1] // 2 * voxel_size_mm,
+                # ]
+                extent=[self.voi.xyz_min[0], self.voi.xyz_max[0], self.voi.xyz_min[1], self.voi.xyz_max[1]],
+            )
+            z_mm_low = z_start + k * voxel_size_mm
+            z_mm_high = z_mm_low + voxel_size_mm
+            ax.set_title(f"z ∈ [{z_mm_low:.0f}, {z_mm_high:.0f}] mm")
+            ax.set_xlabel("x [mm]")
+            ax.set_ylabel("y [mm]")
+
+        fig.suptitle("Scattering density predictions\nvoxel size = {} mm".format(voxel_size_mm), fontsize=16)
+        cbar = fig.colorbar(img, ax=axs.ravel().tolist(), shrink=0.95)
+        cbar.set_label("Sacatter density", rotation=270, labelpad=20)
+        # plt.tight_layout()
+        plt.show()
