@@ -59,13 +59,14 @@ class TrackingEM(VoxelPlotting):
         self.batch_size = batch_size
         self.muon_path = muon_path
 
-        self.M_voxels = self.set_M_voxels()
-        # self.Hit = self.set_Hit()
-
-        self.verify = False
-
         # self.momentum = self.poca.tracks.E
         self.momentum = torch.sqrt(2 * 105.7 * self.poca.tracks.E[:]) * 1e-3  # mom in GeV
+
+        self.M_voxels = self.set_M_voxels()
+        # print('osfwe')
+        self.Hit = self.set_Hit()
+
+        self.verify = False
 
         # self.valid_muons()
 
@@ -201,7 +202,7 @@ class TrackingEM(VoxelPlotting):
 
         return intersection_coordinates_list
 
-    def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume, idx: int) -> Tensor:
+    def _compute_triggered_voxels(self, muon_intersection_coordinates: Tensor, voi: Volume, idx_hit: int) -> Tensor:
         if muon_intersection_coordinates.shape[0] < 2:  # A muon with less than 2 intersections points doesn't trigger any voxels
             triggered_voxels = torch.empty((0, 3), dtype=torch.int32)
         else:
@@ -261,7 +262,10 @@ class TrackingEM(VoxelPlotting):
 
             # Hit
             # indices_for_hit = torch.stack([x_idx, y_idx, z_idx], dim=1)
-            self.Hit[idx].index_put_(tuple(indices.T), self.Hit[idx][tuple(indices.T)] + 1)
+            self._Hit[idx_hit].index_put_(tuple(flat_indices), self._Hit[idx_hit][tuple(flat_indices)] + 1)
+
+            # indices_for_hit = torch.stack([idx, x_idx, y_idx, z_idx], dim=1)
+            # self._Hit.index_put_(tuple(indices_for_hit.T), self._Hit[tuple(indices_for_hit.T)] + 1)
 
             # Defino estas cosas par poder utilizarlos tambien en la funcion de calculo de L y T
             self._idx_first = idx_first
@@ -290,11 +294,11 @@ class TrackingEM(VoxelPlotting):
         self._idx_first_list = []
         self._mapped_indices_list = []
 
-        self.Hit = torch.zeros(len(self._valid_poca), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
+        # self.Hit = torch.zeros(len(self._valid_poca), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
 
         for i in range(len(self._valid_poca)):
             # print(' -> Muon ', i)
-            triggered_voxels = self._compute_triggered_voxels(self._intersection_coordinates[i], self.voi, idx=i)  # No repeated voxels
+            triggered_voxels = self._compute_triggered_voxels(self._intersection_coordinates[i], self.voi, idx_hit=i)  # No repeated voxels
             triggered_voxels_list.append(triggered_voxels)
             self._idx_first_list.append(self._idx_first)
             self._mapped_indices_list.append(self._mapped_indices)
@@ -1711,10 +1715,10 @@ class TrackingEM(VoxelPlotting):
             self._M_voxels = torch.zeros(self.voi.n_vox_xyz)
         return self._M_voxels
 
-    # def set_Hit(self) -> Tensor:
-    #     if self._Hit is None:
-    #         self._Hit = torch.zeros(self.voi.n_vox_xyz) # realmente las dimensiones estan mal (ver funcion get_triggered_voxels)
-    #     return self._Hit
+    def set_Hit(self) -> Tensor:
+        if self._Hit is None:
+            self._Hit = torch.zeros(len(self.momentum), self.voi.n_vox_xyz[0], self.voi.n_vox_xyz[1], self.voi.n_vox_xyz[2])
+        return self._Hit
 
     @property
     def W(self) -> Tensor:
