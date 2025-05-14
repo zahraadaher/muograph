@@ -84,17 +84,19 @@ class TrackingEM(VoxelPlotting):
             self._xyz_exits_voi = self.recompute_point(xyz_in_voi=self.xyz_in_out_voi[1][:, 0], voi=self.voi, theta_xy=self.tracking.theta_xy_out, pm=1)
 
         # Identify problematic muons (with POCA at [0,0,0])
+        print(self._all_poca.size())
         problematic_muons_mask = (self._all_poca == torch.tensor([0.0, 0.0, 0.0], device=self._all_poca.device)).all(dim=1)
 
         # Filter out problematic POCA points
-        self._valid_poca = self._all_poca[~problematic_muons_mask]  # Keeps only valid POCA points
-        self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask]
-        self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask]
-        self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask]
+        self._valid_poca = self._all_poca[~problematic_muons_mask][: self.n_events]  # Keeps only valid POCA points
+        print(self._valid_poca.size())
+        self._valid_xyz_enters_voi = self._xyz_enters_voi[~problematic_muons_mask][: self.n_events]
+        self._valid_xyz_exits_voi = self._xyz_exits_voi[~problematic_muons_mask][: self.n_events]
+        self._valid_tracks_in = self.tracking.tracks_in[~problematic_muons_mask][: self.n_events]
+        self._valid_tracks_out = self.tracking.tracks_out[~problematic_muons_mask][: self.n_events]
 
-        self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask]
-        self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask]
+        self._valid_theta_in = self.tracking.tracks_in[~problematic_muons_mask][: self.n_events]
+        self._valid_theta_out = self.tracking.tracks_out[~problematic_muons_mask][: self.n_events]
 
         # self.poca.tracks.E # es la energía cinética del muon, no hace falta hacerle el masking
 
@@ -263,6 +265,10 @@ class TrackingEM(VoxelPlotting):
             # Hit
             # indices_for_hit = torch.stack([x_idx, y_idx, z_idx], dim=1)
             self._Hit[idx_hit].index_put_(tuple(flat_indices), self._Hit[idx_hit][tuple(flat_indices)] + 1)
+            # print('idx=', idx)
+            # self._Hit[idx].index_put_(tuple(flat_indices), self._Hit[idx][tuple(flat_indices)] + 1)
+            # if idx_hit == 0:
+            #     print('Hit para el muon 0: ',self._Hit[idx_hit])
 
             # indices_for_hit = torch.stack([idx, x_idx, y_idx, z_idx], dim=1)
             # self._Hit.index_put_(tuple(indices_for_hit.T), self._Hit[tuple(indices_for_hit.T)] + 1)

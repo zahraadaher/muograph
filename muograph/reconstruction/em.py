@@ -9,7 +9,17 @@ from muograph.volume.volume import Volume
 import matplotlib.pyplot as plt
 import numpy as np
 
-from matplotlib.colors import LogNorm
+
+from matplotlib.colors import LogNorm, Normalize
+
+# from matplotlib.gridspec import GridSpec
+
+
+# from matplotlib.animation import FuncAnimation
+
+
+# import matplotlib.animation as animation
+
 
 # from muograph.tracking.tracking_em import Tracking_EM
 from muograph.reconstruction.tracking_em_test import TrackingEM  # Aqui es donde yo he ido trabajando y donde tengo M y W
@@ -152,14 +162,14 @@ class EM(VoxelPlotting):
             Sy = torch.zeros(n_events, Ni, Nj, Nk)
             S = torch.zeros(n_events, Ni, Nj, Nk)
             lambda_itr = scatter_density[itr]
-            # print(f"Scatter Density at iteration {itr}: {scatter_density[itr]}")
+            print(f"Scatter Density at iteration {itr}: {scatter_density[itr]}")
 
             for batch in dataloader:  # <-- NEW LINE
                 batch_indices = batch[0].tolist()  # Extract batch indices  # <-- NEW LINE
                 # print('Batch: ', batch)
 
                 for i in batch_indices:  # <-- UPDATED TO USE BATCHED DATA
-                    # print('\t i: ',i)
+                    print("\t i: ", i)
                     # el ultimo valor que tomara sera 9477
                     # por loque entiendo, es como si estuvieramos tomando cada muon (i-muon)
 
@@ -179,6 +189,7 @@ class EM(VoxelPlotting):
                         sigma_D_inv = torch.linalg.inv(sigma_D[i, :, :])
                         xx, yy, zz = torch.meshgrid(torch.arange(Ni), torch.arange(Nj), torch.arange(Nk))
                         mask = self.Hit[i].bool()
+                        # mask = self.M.bool()
                         xx = xx[mask]
                         yy = yy[mask]
                         zz = zz[mask]
@@ -211,7 +222,7 @@ class EM(VoxelPlotting):
 
                         # # comprobación de matrices y calculos:
                         # # Solo para unos pocos eventos
-                        # if i in [0, 10]:  # Puedes cambiar estos valores
+                        # if i in range(0, 10):  # Puedes cambiar estos valores
                         #     print(f"\n[Iter {itr}] Muon {i}:")
                         #     print(f"  pr_i = {pr_i.item():.3f}")
                         #     print(f"  det(sigma_D) = {det_sigma_D.item():.3e}")
@@ -242,7 +253,121 @@ class EM(VoxelPlotting):
 
         return rad_len, scatter_density
 
-    def plot_scattering_density_slices(self, scatter_density_all: torch.Tensor, iteration: int = -1) -> None:
+    def plot_scattering_density_slices(self, scatter_density_all: torch.Tensor, iteration: int = -1, log_scale: bool = False) -> None:
+        """
+        Plots 8 slices along the z-axis from a specific iteration of the 3D scattering density tensor.
+
+        Parameters:
+        - scatter_density_all: Tensor of shape (N, Nx, Ny, Nz), all iterations of scattering densities.
+        - iteration: Index of the iteration to plot (default: -1, the last one).
+        - log_scale: If True, use logarithmic color scale.
+        """
+        voxel_size_mm = self.voi.vox_width
+        z_start = self.voi.xyz_min[2]
+
+        if iteration >= scatter_density_all.shape[0] or iteration < -scatter_density_all.shape[0]:
+            raise ValueError(f"Invalid iteration index {iteration}. Valid range: [-{scatter_density_all.shape[0]}, {scatter_density_all.shape[0]-1}]")
+
+        scatter_density = scatter_density_all[iteration]
+        scatter_density_np = scatter_density.cpu().numpy()
+        Nk = scatter_density_np.shape[2]
+
+        # last_density_np = scatter_density_all[-1].cpu().numpy()
+        # vmin = np.min(last_density_np[last_density_np > 0]) if log_scale else np.min(last_density_np)
+        # vmax = np.max(last_density_np)
+        # if vmin <= 0 or vmin == vmax:
+        #     vmin, vmax = 1e-6, 1e-2
+
+        vmin = np.min(scatter_density_np)
+        vmax = np.max(scatter_density_np)
+
+        norm = LogNorm(vmin=vmin, vmax=vmax) if log_scale else Normalize(vmin=vmin, vmax=vmax)
+
+        z_indices = np.linspace(0, Nk - 1, 8, dtype=int)
+
+        fig, axs = plt.subplots(2, 4, figsize=(16, 8), constrained_layout=True)
+
+        for ax, k in zip(axs.flat, z_indices):
+            img = ax.imshow(
+                scatter_density_np[:, :, k].T,
+                origin="lower",
+                cmap="jet",
+                norm=norm,
+                extent=[self.voi.xyz_min[0], self.voi.xyz_max[0], self.voi.xyz_min[1], self.voi.xyz_max[1]],
+            )
+            z_mm_low = z_start + k * voxel_size_mm
+            z_mm_high = z_mm_low + voxel_size_mm
+            ax.set_title(f"z ∈ [{z_mm_low:.0f}, {z_mm_high:.0f}] mm")
+            ax.set_xlabel("x [mm]")
+            ax.set_ylabel("y [mm]")
+
+        fig.suptitle(f"Scattering density - Iteration {iteration % scatter_density_all.shape[0]}\nVoxel size = {voxel_size_mm} mm", fontsize=16)
+        cbar = fig.colorbar(img, ax=axs.ravel().tolist(), shrink=0.95)
+        cbar.set_label("Scattering density", rotation=270, labelpad=20)
+        plt.show()
+
+    # # Prueba de animación
+    # def animate_scattering_density_slices(
+    #     self, scatter_density_all: torch.Tensor, log_scale: bool = False, save_path: str = None, interval: int = 500  # ms per frame
+    # ) -> None:
+    #     voxel_size_mm = self.voi.vox_width
+    #     z_start = self.voi.xyz_min[2]
+
+    #     scatter_density_np_all = scatter_density_all.cpu().numpy()
+    #     N_iter = scatter_density_np_all.shape[0]
+    #     Nk = scatter_density_np_all.shape[3]
+    #     z_indices = np.linspace(0, Nk - 1, 8, dtype=int)
+
+    #     # Common color normalization
+    #     last_density_np = scatter_density_np_all[-1]
+    #     vmin = np.min(last_density_np[last_density_np > 0]) if log_scale else np.min(last_density_np)
+    #     vmax = np.max(last_density_np)
+    #     norm = LogNorm(vmin=vmin, vmax=vmax) if log_scale else Normalize(vmin=vmin, vmax=vmax)
+
+    #     fig, axs = plt.subplots(2, 4, figsize=(16, 8), constrained_layout=True)
+    #     ims = []
+    #     titles = []
+
+    #     for ax in axs.flat:
+    #         im = ax.imshow(
+    #             np.zeros_like(scatter_density_np_all[0, :, :, 0].T),
+    #             origin="lower",
+    #             cmap="jet",
+    #             norm=norm,
+    #             extent=[
+    #                 self.voi.xyz_min[0],
+    #                 self.voi.xyz_max[0],
+    #                 self.voi.xyz_min[1],
+    #                 self.voi.xyz_max[1],
+    #             ],
+    #         )
+    #         ims.append(im)
+    #         titles.append(ax.set_title(""))
+    #         ax.set_xlabel("x [mm]")
+    #         ax.set_ylabel("y [mm]")
+
+    #     suptitle = fig.suptitle("", fontsize=16)
+    #     cbar = fig.colorbar(ims[0], ax=axs.ravel().tolist(), shrink=0.95)
+    #     cbar.set_label("Scattering density", rotation=270, labelpad=20)
+
+    #     def update(frame) -> None:
+    #         scatter_density_np = scatter_density_np_all[frame]
+    #         for im, title, k, ax in zip(ims, titles, z_indices, axs.flat):
+    #             im.set_data(scatter_density_np[:, :, k].T)
+    #             z_mm_low = z_start + k * voxel_size_mm
+    #             z_mm_high = z_mm_low + voxel_size_mm
+    #             title.set_text(f"z ∈ [{z_mm_low:.0f}, {z_mm_high:.0f}] mm")
+    #         suptitle.set_text(f"Scattering density - Iteration {frame}\nVoxel size = {voxel_size_mm} mm")
+    #         return ims + titles + [suptitle]
+
+    #     anim = FuncAnimation(fig, update, frames=N_iter, interval=interval, blit=False)
+
+    #     if save_path:
+    #         anim.save(save_path, writer="ffmpeg", dpi=200)
+    #     else:
+    #         plt.show()
+
+    def sencilla_plot_scattering_density_slices(self, scatter_density_all: torch.Tensor, iteration: int = -1) -> None:
         """
         Plots 8 slices along the z-axis from a specific iteration of the 3D scattering density tensor.
 
